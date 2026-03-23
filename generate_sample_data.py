@@ -12,6 +12,8 @@ import random
 from collections import defaultdict
 from datetime import date, timedelta
 
+import yaml
+
 parser = argparse.ArgumentParser(description="Generate sample shift/people CSV files.")
 parser.add_argument(
     "--seed",
@@ -20,9 +22,29 @@ parser.add_argument(
     metavar="N",
     help="Random seed for reproducibility (default: 42).",
 )
+parser.add_argument(
+    "--profiles",
+    default="profiles.yaml",
+    metavar="PATH",
+    help="YAML file defining worker preference profiles (default: profiles.yaml).",
+)
 args = parser.parse_args()
 
 random.seed(args.seed)
+
+with open(args.profiles, encoding="utf-8") as _f:
+    _profiles_data = yaml.safe_load(_f)
+if not _profiles_data or "profiles" not in _profiles_data:
+    raise ValueError(f"'{args.profiles}' must contain a top-level 'profiles' list.")
+_raw_profiles = _profiles_data["profiles"]
+if not _raw_profiles:
+    raise ValueError(f"No profiles found in '{args.profiles}'.")
+for _p in _raw_profiles:
+    for _key in ("slots", "dows", "num_prefs"):
+        if _key not in _p:
+            raise ValueError(f"Profile '{_p.get('name', '?')}' is missing required field '{_key}'.")
+    if len(_p["num_prefs"]) != 2:
+        raise ValueError(f"Profile '{_p.get('name', '?')}': num_prefs must be [min, max].")
 
 # ---------------------------------------------------------------------------
 # Shifts
@@ -106,26 +128,12 @@ for ln in LAST_NAMES:
 assert len(names) == 200, f"Only generated {len(names)} unique names; add more first/last names."
 
 # ---------------------------------------------------------------------------
-# Worker "profiles" — each person is assigned one profile that drives which
-# shifts they prefer.  Six archetypes cover typical scheduling populations.
+# Worker "profiles" — loaded from --profiles YAML file.
+# Each profile drives which shifts a person prefers.
 # ---------------------------------------------------------------------------
-# Each profile specifies:
-#   preferred_slots : slot indices (0-5) this worker favours
-#   preferred_dows  : day-of-week indices (0=Mon … 6=Sun) this worker favours
-#   num_prefs       : (min, max) range for how many preferences to list
 PROFILES = [
-    # 0 — day shift, weekdays only
-    {"slots": [2, 3],       "dows": list(range(5)),  "num_prefs": (20, 30)},
-    # 1 — evening, any day
-    {"slots": [4, 5],       "dows": list(range(7)),  "num_prefs": (20, 28)},
-    # 2 — night owl (graveyard + late evening)
-    {"slots": [0, 5],       "dows": list(range(7)),  "num_prefs": (20, 25)},
-    # 3 — flexible day (morning through early evening)
-    {"slots": [2, 3, 4],    "dows": list(range(7)),  "num_prefs": (20, 32)},
-    # 4 — weekend warrior
-    {"slots": [2, 3, 4],    "dows": [5, 6],          "num_prefs": (20, 20)},
-    # 5 — early bird (04:00–12:00 window)
-    {"slots": [1, 2],       "dows": list(range(5)),  "num_prefs": (20, 26)},
+    {"slots": p["slots"], "dows": p["dows"], "num_prefs": tuple(p["num_prefs"])}
+    for p in _raw_profiles
 ]
 
 def build_preferences(profile: dict) -> list:
@@ -193,3 +201,4 @@ print(f"  -> feasible with min=4, max=8  "
 print()
 print(f"Written: {shifts_path}")
 print(f"Written: {people_path}")
+print(f"Profiles: {args.profiles}  ({len(PROFILES)} profiles)")

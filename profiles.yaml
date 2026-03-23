@@ -1,0 +1,45 @@
+# Shifter preference profiles for generate_sample_data.py
+#
+# Each profile drives which types of shifts a person prefers.
+# Fields:
+#   name        : human-readable label (used in comments/logs only)
+#   slots       : list of slot indices to prefer
+#                   0 = 00:00–04:00  (graveyard)
+#                   1 = 04:00–08:00  (early morning)
+#                   2 = 08:00–12:00  (morning)
+#                   3 = 12:00–16:00  (afternoon)
+#                   4 = 16:00–20:00  (early evening)
+#                   5 = 20:00–00:00  (late evening)
+#   dows        : list of day-of-week indices to prefer (0=Mon … 6=Sun)
+#   num_prefs   : [min, max] number of preferred shifts to assign
+
+profiles:
+  - name: day shift weekdays
+    slots: [2, 3]
+    dows: [0, 1, 2, 3, 4]
+    num_prefs: [20, 30]
+
+  - name: evening any day
+    slots: [4, 5]
+    dows: [0, 1, 2, 3, 4, 5, 6]
+    num_prefs: [20, 28]
+
+  - name: night owl
+    slots: [0, 5]
+    dows: [0, 1, 2, 3, 4, 5, 6]
+    num_prefs: [20, 25]
+
+  - name: flexible day
+    slots: [2, 3, 4]
+    dows: [0, 1, 2, 3, 4, 5, 6]
+    num_prefs: [20, 32]
+
+  - name: weekend warrior
+    slots: [2, 3, 4]
+    dows: [4, 5, 6]
+    num_prefs: [20, 20]
+
+  - name: early bird
+    slots: [1, 2]
+    dows: [0, 1, 2, 3, 4]
+    num_prefs: [20, 26]

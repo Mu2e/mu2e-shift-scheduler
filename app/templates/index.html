@@ -26,6 +26,7 @@
             </label>
             <input class="form-control" type="file" id="shifts_file"
                    name="shifts_file" accept=".csv" required>
+            <div id="shifts_file_count" class="form-text"></div>
           </div>
 
           <div class="mb-0">
@@ -37,6 +38,7 @@
             </label>
             <input class="form-control" type="file" id="people_file"
                    name="people_file" accept=".csv" required>
+            <div id="people_file_count" class="form-text"></div>
           </div>
 
         </div>
@@ -187,6 +189,34 @@ Carol,shift-0001,shift-0002,shift-0003</pre>
     document.getElementById("submitBtn").disabled = true;
     document.getElementById("btnSpinner").classList.remove("d-none");
     document.getElementById("solvingMsg").style.display = "inline";
+  });
+
+  function countCsvRows(file, callback) {
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      var lines = e.target.result.split(/\r?\n/).filter(function (l) {
+        return l.trim() !== "";
+      });
+      // subtract 1 for the header row
+      callback(Math.max(0, lines.length - 1));
+    };
+    reader.readAsText(file);
+  }
+
+  document.getElementById("shifts_file").addEventListener("change", function () {
+    var el = document.getElementById("shifts_file_count");
+    if (!this.files.length) { el.textContent = ""; return; }
+    countCsvRows(this.files[0], function (n) {
+      el.textContent = n + " shift" + (n !== 1 ? "s" : "") + " loaded";
+    });
+  });
+
+  document.getElementById("people_file").addEventListener("change", function () {
+    var el = document.getElementById("people_file_count");
+    if (!this.files.length) { el.textContent = ""; return; }
+    countCsvRows(this.files[0], function (n) {
+      el.textContent = n + " person" + (n !== 1 ? "s" : "") + " loaded";
+    });
   });
 </script>
 {% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Welcome — Mu2e Shift Scheduler{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+
+    <div class="text-center mb-5 mt-3">
+      <h1 class="fw-bold"><span style="color:#ffc107;">Mu2e</span> Shift Scheduler</h1>
+      <p class="lead text-muted">
+        Automated shift assignment for the Mu2e experiment at Fermilab.
+      </p>
+    </div>
+
+    <!-- Introduction card -->
+    <div class="card mb-4">
+      <div class="card-body px-4 py-4">
+        <h4 class="card-title">Welcome</h4>
+        <p>
+          Welcome to the Mu2e Shift Scheduler.
+        </p>
+        <p class="mb-0">
+          Use the links below to submit your shift preferences, view current submissions, or
+          run the scheduler to generate an optimised assignment.
+        </p>
+      </div>
+    </div>
+
+    <!-- Quick-action cards -->
+    <div class="row g-3 mb-5">
+
+      <div class="col-md-4">
+        <div class="card h-100 text-center">
+          <div class="card-body py-4">
+            <div class="fs-1 mb-2">&#128203;</div>
+            <h5 class="card-title">Submit Preferences</h5>
+            <p class="card-text text-muted small">
+              Shifters: enter your name and select the shifts you'd prefer to work.
+            </p>
+            <a href="/preferences/" class="btn btn-success btn-sm">Submit</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="card h-100 text-center">
+          <div class="card-body py-4">
+            <div class="fs-1 mb-2">&#128202;</div>
+            <h5 class="card-title">View Preferences</h5>
+            <p class="card-text text-muted small">
+              See a summary of all preferences that have been submitted so far.
+            </p>
+            <a href="/preferences/current" class="btn btn-outline-primary btn-sm">View</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="card h-100 text-center">
+          <div class="card-body py-4">
+            <div class="fs-1 mb-2">&#9881;&#65039;</div>
+            <h5 class="card-title">Run Scheduler</h5>
+            <p class="card-text text-muted small">
+              Upload shift and people CSV files, configure constraints, and run the optimizer.
+            </p>
+            <a href="{{ url_for('main.index') }}" class="btn btn-primary btn-sm">Schedule</a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+{% endblock %}

@@ -22,16 +22,17 @@
 
 <nav class="navbar navbar-dark bg-dark mb-4">
   <div class="container">
-    <a class="navbar-brand" href="/">
+    <a class="navbar-brand" href="{{ url_for('main.welcome') }}">
       <span>Mu2e</span> Shift Scheduler
     </a>
     <div class="d-flex gap-2">
       <a href="/preferences/" class="btn btn-outline-success btn-sm">Submit Preferences</a>
       <a href="/preferences/current" class="btn btn-outline-light btn-sm">View Preferences</a>
-      <a href="/" class="btn btn-outline-light btn-sm">Scheduler</a>
+      <a href="{{ url_for('main.index') }}" class="btn btn-outline-light btn-sm">Scheduler</a>
       {% if session.get('results_path') %}
       <a href="/results" class="btn btn-warning btn-sm">View Results</a>
       {% endif %}
+      <a href="{{ url_for('main.about') }}" class="btn btn-outline-light btn-sm ms-2">About</a>
     </div>
   </div>
 </nav>

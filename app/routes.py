@@ -83,6 +83,16 @@ def _get_float(key: str):
 # ---------------------------------------------------------------------------
 
 @bp.route("/")
+def welcome():
+    return render_template("welcome.html")
+
+
+@bp.route("/about")
+def about():
+    return render_template("about.html")
+
+
+@bp.route("/schedule")
 def index():
     # Pre-populate form with current config defaults if available
     config = load_config(current_app.config.get("SCHEDULER_CONFIG", "config.yaml"))
@@ -105,10 +115,10 @@ def run_solve():
 
     if not shifts_file or not shifts_file.filename:
         flash("A shifts CSV file is required.", "danger")
-        return redirect(url_for("main.index"))
+        return redirect(url_for("main.schedule"))
     if not people_file or not people_file.filename:
         flash("A people CSV file is required.", "danger")
-        return redirect(url_for("main.index"))
+        return redirect(url_for("main.schedule"))
 
     cli_overrides = {
         "target": _get_int("target"),
@@ -171,10 +181,10 @@ def run_solve():
 
     except (ValueError, InfeasibleError) as exc:
         flash(str(exc), "danger")
-        return redirect(url_for("main.index"))
+        return redirect(url_for("main.schedule"))
     except Exception as exc:
         flash(f"Unexpected error: {exc}", "danger")
-        return redirect(url_for("main.index"))
+        return redirect(url_for("main.schedule"))
     finally:
         for p in (shifts_path, people_path):
             if p:
@@ -191,7 +201,7 @@ def results():
     data, constraints, config_summary, pass2_results = _load_session_data()
     if data is None:
         flash("No results found. Please run the scheduler first.", "warning")
-        return redirect(url_for("main.index"))
+        return redirect(url_for("main.schedule"))
 
     stats = compute_stats(data, constraints)
     return render_template(
@@ -208,7 +218,7 @@ def results_pass2():
     data, constraints, config_summary, pass2_results = _load_session_data()
     if data is None:
         flash("No results found. Please run the scheduler first.", "warning")
-        return redirect(url_for("main.index"))
+        return redirect(url_for("main.schedule"))
     if not pass2_results:
         flash("All shifts were filled by preferred people — no second pass was needed.", "info")
         return redirect(url_for("main.results"))
@@ -227,7 +237,7 @@ def download_csv():
     data, constraints, _, _p2 = _load_session_data()
     if data is None:
         flash("No results to download.", "warning")
-        return redirect(url_for("main.index"))
+        return redirect(url_for("main.schedule"))
     content = as_csv_string(data).encode("utf-8")
     return send_file(
         io.BytesIO(content),
@@ -242,7 +252,7 @@ def download_json():
     data, constraints, _, _p2 = _load_session_data()
     if data is None:
         flash("No results to download.", "warning")
-        return redirect(url_for("main.index"))
+        return redirect(url_for("main.schedule"))
     content = as_json_string(data).encode("utf-8")
     return send_file(
         io.BytesIO(content),

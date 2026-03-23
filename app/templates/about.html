@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}About — Mu2e Shift Scheduler{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+
+    <h2 class="mb-1">About</h2>
+    <p class="text-muted mb-4">Background and technical details.</p>
+
+    <!-- About the experiment -->
+    <div class="card mb-4">
+      <div class="card-header fw-semibold">The Scheduler</div>
+      <div class="card-body">
+        <p>
+          Welcome to the Mu2e Shift Scheduler! 
+
+          This scheduling tool is designed to assign operations shifts to people throughout the 
+          collaboration in a fair and efficient manner.  The way we do this is by collecting a
+          list from all collaborators of their prefrences for days and times they are available 
+          to take control room shifts.  The lists are then fed into an optimization algorithm 
+          that finds the best possible assignment of people to shifts based.
+        </p>
+        <p class="mb-0">
+          The initial schedule is a Monday-Thurday and Friday-Sunday schedule with 3 shifts 
+          per day, but the tool is flexible and can be adapted to different shift patterns if
+          needed.
+        </p>
+        </p>
+        <p class="mb-0">
+          How to get started -- If you are a Mu2e collaborator, go to the "Preferences" page
+          to submit your shift preferences.  After submitting your preferences you can 
+          check your input and modify your choices.
+        </p>
+        <p>
+          After everyone has submitted their preferences, the optimizer will be run to generate the schedule.  The generated schedule will be available on the results page.  This page is also used for dumping out the final schedule and 
+          for loading that into the Electronic Logbook (ELOG) system.
+        </p>
+      </div>
+    </div>
+
+    <!-- About the tool -->
+    <div class="card mb-4">
+      <div class="card-header fw-semibold">About This Tool</div>
+      <div class="card-body">
+        <p>
+          The Mu2e Shift Scheduler assigns people to shifts using
+          <strong>integer linear programming (ILP)</strong> via the
+          <a href="https://coin-or.github.io/pulp/" target="_blank">PuLP</a> library
+          with the CBC solver.
+        </p>
+        <p>
+          The optimizer maximises the total preference score — rewarding assignments
+          where a person gets one of their stated preferred shifts — while penalising
+          deviation from a per-person target shift count.  Hard per-person minimum and
+          maximum constraints are enforced.
+        </p>
+        <p>
+          A two-pass approach is used: the first pass solves the full problem; the
+          second pass re-optimises only the shifts that were not filled by a preferred
+          person, using relaxed per-person bounds.
+        </p>
+        <p class="mb-0">
+          Placeholder text about data handling, how preferences are collected, or how
+          results are exported.
+        </p>
+      </div>
+    </div>
+
+    <!-- Contact / links -->
+    <div class="card mb-4">
+      <div class="card-header fw-semibold">Contact &amp; Links</div>
+      <div class="card-body">
+        <ul class="mb-0">
+          <li>
+            <a href="https://github.com/Mu2e/mu2e-shift-scheduler" target="_blank">
+              GitHub repository
+            </a>
+          </li>
+          <li>
+            <a href="https://github.com/Mu2e/mu2e-shift-scheduler/issues/new" target="_blank">
+              Report an issue
+            </a>
+          </li>
+          <li>Placeholder contact information or mailing list link.</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

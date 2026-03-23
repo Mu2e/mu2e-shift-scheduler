@@ -21,12 +21,45 @@ Outputs
   sample_data/shifts_blocks.csv   — 156 shift blocks
   sample_data/people_blocks.csv   — 96 people, each with ≥6 ordered preferences
 """
+import argparse
 import csv
 import random
 from collections import defaultdict
 from datetime import date, timedelta
 
-random.seed(13)   # reproducible
+import yaml
+
+parser = argparse.ArgumentParser(description="Generate Mu2e block-shift dataset.")
+parser.add_argument(
+    "--seed",
+    type=int,
+    default=42,
+    metavar="N",
+    help="Random seed for reproducibility (default: 42).",
+)
+parser.add_argument(
+    "--profiles",
+    default="profiles_blocks.yaml",
+    metavar="PATH",
+    help="YAML file defining worker preference profiles (default: profiles_blocks.yaml).",
+)
+args = parser.parse_args()
+
+random.seed(args.seed)
+
+with open(args.profiles, encoding="utf-8") as _f:
+    _profiles_data = yaml.safe_load(_f)
+if not _profiles_data or "profiles" not in _profiles_data:
+    raise ValueError(f"'{args.profiles}' must contain a top-level 'profiles' list.")
+_raw_profiles = _profiles_data["profiles"]
+if not _raw_profiles:
+    raise ValueError(f"No profiles found in '{args.profiles}'.")
+for _p in _raw_profiles:
+    for _key in ("primary", "secondary", "num_prefs"):
+        if _key not in _p:
+            raise ValueError(f"Profile '{_p.get('name', '?')}' is missing required field '{_key}'.")
+    if len(_p["num_prefs"]) != 2:
+        raise ValueError(f"Profile '{_p.get('name', '?')}': num_prefs must be [min, max].")
 
 # ---------------------------------------------------------------------------
 # Schedule parameters
@@ -128,55 +161,22 @@ for ln in LAST_NAMES:
 assert len(names) == 96
 
 # ---------------------------------------------------------------------------
-# Preference profiles
+# Preference profiles — loaded from --profiles YAML file.
 #
 # Each profile maps to one or two (block_type, slot_label) pools.
-# primary pools  → ordered first in the preference list (most preferred)
+# primary pools   → ordered first in the preference list (most preferred)
 # secondary pools → appended after, in case more entries are needed
 #
 # num_prefs is (min, max) for how many shifts to include in the list.
 # The hard minimum of 6 is enforced in sample_preferences().
 # ---------------------------------------------------------------------------
 PROFILES = [
-    # 0 — weekday day
-    {"primary":   [("weekday", "day")],
-     "secondary": [("weekday", "evening")],
-     "num_prefs": (8, 14)},
-
-    # 1 — weekday evening
-    {"primary":   [("weekday", "evening")],
-     "secondary": [("weekday", "day")],
-     "num_prefs": (8, 14)},
-
-    # 2 — weekday night
-    {"primary":   [("weekday", "night")],
-     "secondary": [("weekend", "night")],
-     "num_prefs": (6, 12)},
-
-    # 3 — weekend day
-    {"primary":   [("weekend", "day")],
-     "secondary": [("weekend", "evening")],
-     "num_prefs": (8, 14)},
-
-    # 4 — weekend evening
-    {"primary":   [("weekend", "evening")],
-     "secondary": [("weekend", "day")],
-     "num_prefs": (8, 14)},
-
-    # 5 — weekend night
-    {"primary":   [("weekend", "night")],
-     "secondary": [("weekday", "night")],
-     "num_prefs": (6, 12)},
-
-    # 6 — flexible weekday (day or evening, Mon–Thu)
-    {"primary":   [("weekday", "day"), ("weekday", "evening")],
-     "secondary": [("weekday", "night")],
-     "num_prefs": (10, 16)},
-
-    # 7 — flexible weekend (day or evening, Fri–Sun)
-    {"primary":   [("weekend", "day"), ("weekend", "evening")],
-     "secondary": [("weekend", "night")],
-     "num_prefs": (10, 16)},
+    {
+        "primary":   [tuple(pair) for pair in p["primary"]],
+        "secondary": [tuple(pair) for pair in p["secondary"]],
+        "num_prefs": tuple(p["num_prefs"]),
+    }
+    for p in _raw_profiles
 ]
 
 
@@ -280,5 +280,6 @@ print(f"Capacity check                  : "
       f"96×1={96} ≤ {len(shifts)} ≤ 96×4={96*4}  "
       f"{'OK' if 96 <= len(shifts) <= 96*4 else 'INFEASIBLE'}")
 print()
-print(f"Written : {shifts_path}")
-print(f"Written : {people_path}")
+print(f"Written  : {shifts_path}")
+print(f"Written  : {people_path}")
+print(f"Profiles : {args.profiles}  ({len(PROFILES)} profiles)")
