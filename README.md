@@ -10,6 +10,35 @@ The tool includes a web interface for participants to submit preferences, and
 for coordinators to run and review the schedule.  All data is stored in
 human-readable CSV and JSON formats.
 
+## Getting Started
+
+To use this tool, you will need to clone the repository and install any python dependancies that it requires.
+
+Start by creating a virtual environment and installing pip dependancies that are
+listed in the requirements text file::
+```
+python3 -m venv venv
+source ./venv/bin/activate
+pip install -r requirements.txt
+```
+Once this is done you should be able to start up the front end:
+
+```
+python3 run.py --preferences-shifts ./sample_data/shifts_blocks.csv
+```
+
+You can use the --help option to see all the options that it supports.  In 
+general you need to point it where to write out data and what to use as 
+the lists of shifts (i.e. day by day or different blocks).
+
+There are a number of different examples provided.  There are also tools for generating
+these files for different types of time windows (i.e. how many weeks, when they start,
+if they should be week/weekend blocks)  Again look at the examples and use the
+builtin help.
+
+ 
+
+
 ---
 
 ## Features
