@@ -1,10 +1,19 @@
 # Mu2e Shift Scheduler
 
-An Integer Linear Programming (ILP)-based shift scheduling tool for the
-[Mu2e experiment](https://mu2e.fnal.gov/) at Fermilab.  Given a list of
-shifts and a list of people with their preferences, it finds an assignment
-that fills every shift with exactly one person while respecting per-person
-workload constraints and maximising preference satisfaction.
+This is a fairly simple shift scheduling tool for the Mu2e experiment at Fermilab.
+It is designed to take a series of well defined "shifts" (these can be any well
+defined blocks of time, like 8 hour periods, or they can be blocks of days etc...)
+and  list of people with thier ranked preferences of which of these blocks they want
+to be scheduled for.  The solver then tries to find a solution which matches everyone's
+preferences, and other constraints such as a target goal for the number of shifts each
+takes, a minimum and maximum number of shifts people can take and various weightings.
+
+Included are webpages for people to record their preference selections, and for running
+and viewing the outputs.
+
+Files are created with everything in human readable formats (csv and json) and there 
+are some simple tools for converting between formats.
+
 
 ---
 
