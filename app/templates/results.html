@@ -89,6 +89,11 @@
   <a href="/download/json" class="btn btn-info text-white">
     &#11123; Download JSON
   </a>
+  {% if has_pass2 %}
+  <a href="{{ url_for('main.results_pass2') }}" class="btn btn-warning">
+    Pass 2 Results
+  </a>
+  {% endif %}
   <a href="/" class="btn btn-outline-secondary ms-auto">
     &#8617; New Schedule
   </a>

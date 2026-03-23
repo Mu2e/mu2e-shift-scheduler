@@ -168,3 +168,54 @@ def solve(
 
     results.sort(key=lambda r: (r["date"], r["start_time"]))
     return results
+
+
+def solve_two_pass(
+    shifts: list,
+    people: list,
+    constraints: dict,
+    alpha: float = 1.0,
+) -> tuple:
+    """
+    Two-pass solver: first pass uses the given constraints; second pass
+    re-solves only the shifts not filled by a preferred person, using
+    relaxed per-person constraints (min=0, max=1000).
+
+    Returns:
+        (merged, pass2_results) where:
+            merged        – full assignment list (all shifts), sorted by (date, start_time)
+            pass2_results – assignments from the second solve only (empty list if not needed)
+    """
+    # --- Pass 1 ---
+    pass1 = solve(shifts, people, constraints, alpha=alpha)
+
+    # Identify shifts not filled by a preferred person
+    unfilled = [r for r in pass1 if not r["is_preferred"]]
+    if not unfilled:
+        return pass1, []
+
+    # Build the subset of Shift objects for pass 2
+    unfilled_ids = {r["shift_id"] for r in unfilled}
+    shift_map = {s.shift_id: s for s in shifts}
+    subset_shifts = [shift_map[sid] for sid in unfilled_ids]
+
+    # Relaxed constraints: everyone can take 0–1000 shifts; target unchanged
+    relaxed = {
+        pn: {"min": 0, "max": 1000, "target": constraints[pn]["target"]}
+        for pn in constraints
+    }
+
+    # --- Pass 2 ---
+    pass2 = solve(subset_shifts, people, relaxed, alpha=alpha)
+
+    # Merge: replace pass-1 results for unfilled shifts with pass-2 results
+    pass2_map = {r["shift_id"]: r for r in pass2}
+    merged = []
+    for r in pass1:
+        if r["shift_id"] in pass2_map:
+            merged.append(pass2_map[r["shift_id"]])
+        else:
+            merged.append(r)
+
+    merged.sort(key=lambda r: (r["date"], r["start_time"]))
+    return merged, pass2

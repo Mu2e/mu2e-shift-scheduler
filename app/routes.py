@@ -21,7 +21,7 @@ from flask import (
 
 from scheduler.exporter import as_csv_string, as_json_string, compute_stats
 from scheduler.loader import build_constraints, load_config, load_people, load_shifts, validate
-from scheduler.solver import InfeasibleError, solve
+from scheduler.solver import InfeasibleError, solve_two_pass as solve
 
 bp = Blueprint("main", __name__)
 
@@ -30,12 +30,13 @@ bp = Blueprint("main", __name__)
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _save_session_data(results: list, constraints: dict, config_summary: dict) -> str:
+def _save_session_data(results: list, constraints: dict, config_summary: dict, pass2_results: list = None) -> str:
     """Persist solver results to a temp file; return its path."""
     payload = {
         "results": results,
         "constraints": constraints,
         "config_summary": config_summary,
+        "pass2_results": pass2_results or [],
     }
     fd, path = tempfile.mkstemp(suffix=".json", prefix="mu2e_sched_")
     with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -47,10 +48,15 @@ def _load_session_data():
     """Load persisted solver results from temp file stored in session."""
     path = session.get("results_path")
     if not path or not Path(path).exists():
-        return None, None, None
+        return None, None, None, None
     with open(path, encoding="utf-8") as f:
         payload = json.load(f)
-    return payload["results"], payload["constraints"], payload.get("config_summary", {})
+    return (
+        payload["results"],
+        payload["constraints"],
+        payload.get("config_summary", {}),
+        payload.get("pass2_results", []),
+    )
 
 
 def _cleanup_old_results() -> None:
@@ -135,7 +141,7 @@ def run_solve():
 
         # Solve
         effective_alpha = alpha if alpha is not None else config.get("alpha", 1.0)
-        results = solve(shifts, people, constraints, alpha=effective_alpha)
+        results, pass2_results = solve(shifts, people, constraints, alpha=effective_alpha)
 
         # Store results
         _cleanup_old_results()
@@ -148,7 +154,7 @@ def run_solve():
             "n_shifts": len(shifts),
             "n_people": len(people),
         }
-        session["results_path"] = _save_session_data(results, constraints, config_summary)
+        session["results_path"] = _save_session_data(results, constraints, config_summary, pass2_results)
 
     except (ValueError, InfeasibleError) as exc:
         flash(str(exc), "danger")
@@ -169,7 +175,7 @@ def run_solve():
 
 @bp.route("/results")
 def results():
-    data, constraints, config_summary = _load_session_data()
+    data, constraints, config_summary, pass2_results = _load_session_data()
     if data is None:
         flash("No results found. Please run the scheduler first.", "warning")
         return redirect(url_for("main.index"))
@@ -180,12 +186,32 @@ def results():
         assignments=data,
         stats=stats,
         config_summary=config_summary,
+        has_pass2=bool(pass2_results),
+    )
+
+
+@bp.route("/results/pass2")
+def results_pass2():
+    data, constraints, config_summary, pass2_results = _load_session_data()
+    if data is None:
+        flash("No results found. Please run the scheduler first.", "warning")
+        return redirect(url_for("main.index"))
+    if not pass2_results:
+        flash("All shifts were filled by preferred people — no second pass was needed.", "info")
+        return redirect(url_for("main.results"))
+
+    stats = compute_stats(pass2_results, constraints)
+    return render_template(
+        "pass2_results.html",
+        assignments=pass2_results,
+        stats=stats,
+        config_summary=config_summary,
     )
 
 
 @bp.route("/download/csv")
 def download_csv():
-    data, constraints, _ = _load_session_data()
+    data, constraints, _, _p2 = _load_session_data()
     if data is None:
         flash("No results to download.", "warning")
         return redirect(url_for("main.index"))
@@ -200,7 +226,7 @@ def download_csv():
 
 @bp.route("/download/json")
 def download_json():
-    data, constraints, _ = _load_session_data()
+    data, constraints, _, _p2 = _load_session_data()
     if data is None:
         flash("No results to download.", "warning")
         return redirect(url_for("main.index"))

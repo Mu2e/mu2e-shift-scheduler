@@ -25,7 +25,7 @@ import sys
 
 from scheduler.exporter import compute_stats, to_csv, to_json
 from scheduler.loader import build_constraints, load_config, load_people, load_shifts, validate
-from scheduler.solver import InfeasibleError, solve
+from scheduler.solver import InfeasibleError, solve_two_pass as solve
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +88,7 @@ def cmd_solve(args: argparse.Namespace) -> None:
     effective_alpha = args.alpha if args.alpha is not None else config.get("alpha", 1.0)
 
     print(f"Loaded {len(shifts)} shifts and {len(people)} people. Solving...")
-    results = solve(shifts, people, constraints, alpha=effective_alpha)
+    results, _ = solve(shifts, people, constraints, alpha=effective_alpha)
 
     g = config.get("global", {})
     config_summary = {
