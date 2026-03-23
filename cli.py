@@ -117,7 +117,11 @@ def cmd_solve(args: argparse.Namespace) -> None:
 def cmd_serve(args: argparse.Namespace) -> None:
     from app import create_app
 
-    app = create_app(config_path=args.config)
+    app = create_app(
+        config_path=args.config,
+        preferences_shifts_csv=args.preferences_shifts,
+        preferences_json=args.preferences_json,
+    )
     print(f"Starting web server at http://{args.host}:{args.port}/")
     app.run(host=args.host, port=args.port, debug=args.debug)
 
@@ -187,6 +191,17 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1).")
     sv.add_argument("--port", type=int, default=5000, help="Bind port (default: 5000).")
     sv.add_argument("--debug", action="store_true", help="Enable Flask debug mode.")
+    sv.add_argument(
+        "--preferences-shifts",
+        metavar="CSV",
+        help="Shifts CSV to use for the preference-collection pages.",
+    )
+    sv.add_argument(
+        "--preferences-json",
+        default="preferences.json",
+        metavar="FILE",
+        help="JSON file where preferences are stored (default: preferences.json).",
+    )
 
     return parser
 

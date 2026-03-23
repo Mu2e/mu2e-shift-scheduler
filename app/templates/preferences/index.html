@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Submit Shift Preferences — Mu2e{% endblock %}
+
+{% block head %}
+<style>
+  .shift-item {
+    cursor: grab;
+    user-select: none;
+  }
+  .shift-item:active { cursor: grabbing; }
+  #available-list, #preferred-list {
+    min-height: 120px;
+    border: 2px dashed #dee2e6;
+    border-radius: .375rem;
+    padding: .5rem;
+    background: #fff;
+  }
+  #preferred-list { border-color: #198754; background: #f0fff4; }
+  .sortable-ghost { opacity: .4; }
+  .rank-badge {
+    min-width: 1.6rem;
+    text-align: center;
+    font-weight: 600;
+  }
+  .shift-label { font-size: .9rem; }
+  .col-header { font-weight: 600; font-size: .95rem; margin-bottom: .5rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-10">
+    <h2 class="mb-1">Submit Shift Preferences</h2>
+    <p class="text-muted mb-4">
+      Drag shifts from <strong>Available Shifts</strong> into <strong>My Preferences</strong>
+      and arrange them in your preferred order (top = most preferred).
+      You do not need to rank every shift — only the ones you would like to work.
+    </p>
+
+    <form method="post" action="{{ url_for('preferences.submit') }}" id="pref-form">
+      <div class="card mb-4">
+        <div class="card-body">
+          <label for="name" class="form-label fw-semibold">Your Name</label>
+          <input type="text" class="form-control" id="name" name="name"
+                 placeholder="First Last" required autocomplete="name" style="max-width:320px;">
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <!-- Available shifts -->
+        <div class="col-md-6">
+          <div class="col-header text-secondary">
+            Available Shifts
+            <span class="badge bg-secondary ms-1" id="avail-count">{{ shifts|length }}</span>
+          </div>
+          <div id="available-list">
+            {% for shift in shifts %}
+            <div class="card shift-item mb-1" data-id="{{ shift.shift_id }}">
+              <div class="card-body py-2 px-3 d-flex align-items-center gap-2">
+                <span class="text-muted" style="font-size:.75rem;">&#9776;</span>
+                <div class="shift-label">
+                  <span class="fw-semibold">{{ shift.shift_id }}</span>
+                  <span class="text-muted ms-1">
+                    {{ shift.date }}
+                    {{ shift.start_time }}–{{ shift.end_time }}
+                  </span>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Preferred shifts -->
+        <div class="col-md-6">
+          <div class="col-header text-success">
+            My Preferences
+            <span class="badge bg-success ms-1" id="pref-count">0</span>
+          </div>
+          <div id="preferred-list">
+            <p class="text-muted text-center pt-3 mb-0" id="empty-hint">
+              Drag shifts here
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hidden inputs populated by JS before submit -->
+      <div id="hidden-prefs"></div>
+
+      <div class="mt-4 d-flex gap-2">
+        <button type="submit" class="btn btn-success px-4" id="submit-btn">
+          Save My Preferences
+        </button>
+        <button type="button" class="btn btn-outline-secondary" id="clear-btn">
+          Clear Preferences
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+(function () {
+  const availList = document.getElementById('available-list');
+  const prefList  = document.getElementById('preferred-list');
+  const emptyHint = document.getElementById('empty-hint');
+  const availCount = document.getElementById('avail-count');
+  const prefCount  = document.getElementById('pref-count');
+  const hiddenDiv  = document.getElementById('hidden-prefs');
+
+  function updateRanks() {
+    const items = prefList.querySelectorAll('.shift-item');
+    // Remove old rank badges
+    prefList.querySelectorAll('.rank-badge').forEach(b => b.remove());
+    items.forEach((item, i) => {
+      const badge = document.createElement('span');
+      badge.className = 'badge bg-success rank-badge me-2';
+      badge.textContent = i + 1;
+      item.querySelector('.card-body').prepend(badge);
+    });
+    emptyHint.style.display = items.length === 0 ? 'block' : 'none';
+    prefCount.textContent = items.length;
+    availCount.textContent = availList.querySelectorAll('.shift-item').length;
+  }
+
+  function buildHiddenInputs() {
+    hiddenDiv.innerHTML = '';
+    prefList.querySelectorAll('.shift-item').forEach(item => {
+      const inp = document.createElement('input');
+      inp.type = 'hidden';
+      inp.name = 'pref[]';
+      inp.value = item.dataset.id;
+      hiddenDiv.appendChild(inp);
+    });
+  }
+
+  const opts = {
+    group: 'shifts',
+    animation: 150,
+    ghostClass: 'sortable-ghost',
+    onEnd: updateRanks,
+  };
+  Sortable.create(availList, opts);
+  Sortable.create(prefList, opts);
+
+  document.getElementById('pref-form').addEventListener('submit', function (e) {
+    const prefs = prefList.querySelectorAll('.shift-item');
+    if (prefs.length === 0) {
+      e.preventDefault();
+      alert('Please drag at least one shift into "My Preferences" before submitting.');
+      return;
+    }
+    buildHiddenInputs();
+  });
+
+  document.getElementById('clear-btn').addEventListener('click', function () {
+    prefList.querySelectorAll('.shift-item').forEach(item => availList.appendChild(item));
+    updateRanks();
+  });
+
+  updateRanks();
+})();
+</script>
+{% endblock %}

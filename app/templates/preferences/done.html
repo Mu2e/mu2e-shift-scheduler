@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Preferences Saved — Mu2e{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7 text-center">
+    <div class="card py-5 px-4 mt-4">
+      <div class="mb-3" style="font-size:3rem;">&#10003;</div>
+      <h3 class="mb-2">Preferences Saved</h3>
+      {% if name %}
+      <p class="text-muted mb-4">Thank you, <strong>{{ name }}</strong>! Your shift preferences have been recorded.</p>
+      {% else %}
+      <p class="text-muted mb-4">Your shift preferences have been recorded.</p>
+      {% endif %}
+      <div class="d-flex gap-2 justify-content-center flex-wrap">
+        <a href="{{ url_for('preferences.index') }}" class="btn btn-outline-success">
+          Submit Another Response
+        </a>
+        <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary">
+          Go to Scheduler
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

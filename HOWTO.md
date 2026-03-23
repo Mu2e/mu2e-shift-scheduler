@@ -122,7 +122,96 @@ python3 cli.py serve --debug
 
 ---
 
-## 3  Configuration File (`config.yaml`)
+## 3  Collecting Shift Preferences
+
+Before running the scheduler you need a `people.csv` listing each
+person's preferred shifts.  The preference-collection pages let
+participants submit their own preferences through a web form; the
+converter utility turns the collected responses into the CSV the
+scheduler expects.
+
+### Start the server with a shifts file
+
+Pass your shifts CSV when launching the server so the preference pages
+know which shifts to display:
+
+```bash
+python3 cli.py serve \
+    --preferences-shifts  sample_data/small/shifts.csv
+
+# or via run.py
+python3 run.py --preferences-shifts sample_data/small/shifts.csv
+```
+
+By default responses are saved to `preferences.json` in the current
+directory.  Change the location with `--preferences-json`:
+
+```bash
+python3 cli.py serve \
+    --preferences-shifts  sample_data/small/shifts.csv \
+    --preferences-json    data/my_preferences.json
+```
+
+### Submitting preferences (participant view)
+
+1. Open **http://127.0.0.1:5000/preferences/** in a browser.
+2. Enter your name.
+3. Drag shifts from **Available Shifts** into **My Preferences** and
+   arrange them with your most-preferred shift at the top.
+4. Click **Save My Preferences**.
+
+Each submission is appended to the JSON file as a new entry.  If the
+same person submits more than once, all entries are kept — the converter
+will use the most recent one by default.
+
+### Reviewing submissions (organiser view)
+
+Open **http://127.0.0.1:5000/preferences/submissions** to see all
+recorded responses alongside shift details.
+
+### Converting responses to `people.csv`
+
+Once everyone has submitted, run the converter to produce the CSV that
+the scheduler needs:
+
+```bash
+python3 json_to_people_csv.py preferences.json people.csv
+```
+
+Print to stdout instead (useful for a quick check):
+
+```bash
+python3 json_to_people_csv.py preferences.json
+```
+
+By default, only the most recent submission per person is included.
+Use `--keep-duplicates` to include every submission as a separate row:
+
+```bash
+python3 json_to_people_csv.py --keep-duplicates preferences.json people.csv
+```
+
+The output CSV uses the `name,pref_1,pref_2,...` format expected by the
+scheduler (see **Input File Format** below).
+
+### Preferences JSON format
+
+The JSON file is a plain array; you can inspect or edit it directly:
+
+```json
+[
+  {
+    "name": "Alice Smith",
+    "submitted_at": "2026-03-22T10:30:00+00:00",
+    "preferences": ["shift-0001", "shift-0004", "shift-0007"]
+  },
+  ...
+]
+```
+
+---
+
+## 4  Configuration File (`config.yaml`)
 
 Edit `config.yaml` to set persistent defaults:
 
@@ -155,7 +244,7 @@ Names must match exactly (case-sensitive) the values in the people CSV.
 
 ---
 
-## 4  Input File Format
+## 5  Input File Format
 
 ### shifts.csv
 
@@ -187,7 +276,7 @@ Bob Smith,shift-E-001,shift-E-004
 
 ---
 
-## 5  Output Format
+## 6  Output Format
 
 ### CSV
 
@@ -221,7 +310,7 @@ shift-W-002,2026-04-06,16:00,23:59,Bob Smith,False,
 
 ---
 
-## 6  Generating Sample Data
+## 7  Generating Sample Data
 
 ```bash
 # Original small dataset (24 shifts, 8 people)
@@ -236,7 +325,7 @@ python3 generate_mu2e_data.py
 
 ---
 
-## 7  Troubleshooting
+## 8  Troubleshooting
 
 ### "Infeasible: total max capacity … is less than the number of shifts"
 
