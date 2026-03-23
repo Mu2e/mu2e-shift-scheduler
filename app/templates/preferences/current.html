@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Current Preferences — Mu2e{% endblock %}
+
+{% block head %}
+<style>
+  th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
+  th[data-sort]:hover { background-color: #495057; }
+  th[data-sort]::after { content: " ⇕"; font-size: .75rem; opacity: .5; }
+  th[data-sort].asc::after  { content: " ↑"; opacity: 1; }
+  th[data-sort].desc::after { content: " ↓"; opacity: 1; }
+  .pref-chip {
+    display: inline-block;
+    font-size: .78rem;
+    padding: .15rem .45rem;
+    border-radius: .25rem;
+    background: #e9ecef;
+    margin: .1rem .1rem .1rem 0;
+    white-space: nowrap;
+  }
+  .pref-chip .rank { color: #6c757d; font-size: .7rem; margin-right: .2rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h2 class="mb-0">Current Preferences</h2>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('preferences.index') }}" class="btn btn-success btn-sm">+ Submit Preferences</a>
+    <a href="{{ url_for('preferences.submissions') }}" class="btn btn-outline-secondary btn-sm">View All Submissions</a>
+  </div>
+</div>
+
+<p class="text-muted">
+  {{ submissions|length }} participant(s) &mdash; one row per person, most recent submission shown.
+</p>
+
+{% if submissions %}
+<div class="mb-3">
+  <input type="text" id="search" class="form-control" style="max-width:320px;"
+         placeholder="Filter by name or shift&hellip;">
+</div>
+
+<div class="table-responsive">
+  <table class="table table-hover align-middle" id="prefs-table">
+    <thead>
+      <tr>
+        <th data-sort="name" style="width:18%;">Name</th>
+        <th data-sort="count" style="width:8%;"># Prefs</th>
+        <th data-sort="date" style="width:16%;">Submitted</th>
+        <th>Preferred Shifts (ranked)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sub in submissions %}
+      <tr>
+        <td class="fw-semibold">{{ sub.name }}</td>
+        <td>{{ sub.preferences|length }}</td>
+        <td class="text-muted" style="font-size:.875rem;">
+          {{ sub.submitted_at[:16].replace('T', ' ') }} UTC
+        </td>
+        <td>
+          {% for shift_id in sub.preferences %}
+          <span class="pref-chip">
+            <span class="rank">{{ loop.index }}.</span>{{ shift_id }}{% if shift_id in shift_map %}&nbsp;<span class="text-muted">{{ shift_map[shift_id].date }} {{ shift_map[shift_id].start_time }}–{{ shift_map[shift_id].end_time }}</span>{% endif %}
+          </span>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="alert alert-info">No preferences have been submitted yet.</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const table = document.getElementById('prefs-table');
+  if (!table) return;
+  const tbody = table.querySelector('tbody');
+  const search = document.getElementById('search');
+
+  // --- filtering ---
+  search.addEventListener('input', function () {
+    const q = this.value.toLowerCase();
+    tbody.querySelectorAll('tr').forEach(row => {
+      row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+
+  // --- sorting ---
+  table.querySelectorAll('th[data-sort]').forEach(th => {
+    th.addEventListener('click', function () {
+      const col = this.dataset.sort;
+      const asc = !this.classList.contains('asc');
+      table.querySelectorAll('th[data-sort]').forEach(h => h.classList.remove('asc', 'desc'));
+      this.classList.add(asc ? 'asc' : 'desc');
+
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      rows.sort((a, b) => {
+        let av, bv;
+        if (col === 'name') {
+          av = a.cells[0].textContent.trim().toLowerCase();
+          bv = b.cells[0].textContent.trim().toLowerCase();
+        } else if (col === 'count') {
+          av = parseInt(a.cells[1].textContent) || 0;
+          bv = parseInt(b.cells[1].textContent) || 0;
+        } else { // date
+          av = a.cells[2].textContent.trim();
+          bv = b.cells[2].textContent.trim();
+        }
+        if (av < bv) return asc ? -1 : 1;
+        if (av > bv) return asc ? 1 : -1;
+        return 0;
+      });
+      rows.forEach(r => tbody.appendChild(r));
+    });
+  });
+})();
+</script>
+{% endblock %}

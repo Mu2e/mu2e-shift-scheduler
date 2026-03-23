@@ -159,6 +159,37 @@ def done():
     return render_template("preferences/done.html", name=name)
 
 
+@bp.route("/current")
+def current():
+    try:
+        all_submissions = _load_submissions()
+    except Exception as exc:
+        flash(f"Could not load submissions: {exc}", "danger")
+        all_submissions = []
+
+    # Deduplicate: one entry per person, keeping the most recent
+    seen = {}
+    for sub in all_submissions:
+        key = sub["name"].strip().lower()
+        if key not in seen or sub["submitted_at"] > seen[key]["submitted_at"]:
+            seen[key] = sub
+    current_submissions = list(seen.values())
+    current_submissions.sort(key=lambda s: s["name"].strip().lower())
+
+    try:
+        shifts = load_shifts(str(_shifts_csv_path()))
+        shift_map = {s.shift_id: s for s in shifts}
+    except Exception:
+        shift_map = {}
+
+    return render_template(
+        "preferences/current.html",
+        submissions=current_submissions,
+        shift_map=shift_map,
+        json_path=str(_json_path().resolve()),
+    )
+
+
 @bp.route("/submissions")
 def submissions():
     try:
