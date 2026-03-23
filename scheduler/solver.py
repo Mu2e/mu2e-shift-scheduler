@@ -62,24 +62,26 @@ def solve(
         pref_weight[person.name] = {sid: (n - rank) for rank, sid in enumerate(person.preferences)}
 
     shift_ids = [s.shift_id for s in shifts]
+    shift_pts = [s.points for s in shifts]
     person_names = [p.name for p in people]
     S = len(shift_ids)
     P = len(person_names)
 
-    # Quick capacity check before building the (potentially large) model
-    total_min = sum(constraints[pn]["min"] for pn in person_names)
-    total_max = sum(constraints[pn]["max"] for pn in person_names)
-    if total_max < S:
+    # Quick capacity check (in shift-points) before building the model
+    total_pts = sum(shift_pts)
+    total_min_pts = sum(constraints[pn]["min"] for pn in person_names)
+    total_max_pts = sum(constraints[pn]["max"] for pn in person_names)
+    if total_max_pts < total_pts:
         raise InfeasibleError(
-            f"Not enough capacity: total max shifts ({total_max}) across {P} people "
-            f"is less than the number of shifts to fill ({S}). "
-            f"Increase max_shifts_per_person or add more people."
+            f"Not enough capacity: total max points ({total_max_pts:.2g}) across {P} people "
+            f"is less than the total shift points to fill ({total_pts:.2g}). "
+            f"Increase max_points_per_person or add more people."
         )
-    if total_min > S:
+    if total_min_pts > total_pts:
         raise InfeasibleError(
-            f"Too many required shifts: total min shifts ({total_min}) across {P} people "
-            f"exceeds the number of available shifts ({S}). "
-            f"Decrease min_shifts_per_person."
+            f"Too many required points: total min points ({total_min_pts:.2g}) across {P} people "
+            f"exceeds the total available shift points ({total_pts:.2g}). "
+            f"Decrease min_points_per_person."
         )
 
     # --- Build ILP model ---
@@ -110,15 +112,15 @@ def solve(
     for j in range(S):
         prob += lpSum(x[i, j] for i in range(P)) == 1, f"cover_j{j}"
 
-    # 2. Per-person min/max and target-deviation tracking.
+    # 2. Per-person min/max and target-deviation tracking (all in shift-points).
     for i in range(P):
         pn = person_names[i]
         c = constraints[pn]
-        total_i = lpSum(x[i, j] for j in range(S))
-        prob += total_i >= c["min"], f"min_i{i}"
-        prob += total_i <= c["max"], f"max_i{i}"
-        prob += d[i] >= total_i - c["target"], f"dpos_i{i}"
-        prob += d[i] >= c["target"] - total_i, f"dneg_i{i}"
+        total_pts_i = lpSum(shift_pts[j] * x[i, j] for j in range(S))
+        prob += total_pts_i >= c["min"],              f"min_i{i}"
+        prob += total_pts_i <= c["max"],              f"max_i{i}"
+        prob += d[i] >= total_pts_i - c["target"],   f"dpos_i{i}"
+        prob += d[i] >= c["target"] - total_pts_i,   f"dneg_i{i}"
 
     # --- Solve ---
     prob.solve(PULP_CBC_CMD(msg=0))
@@ -160,6 +162,7 @@ def solve(
                 "date": s.date,
                 "start_time": s.start_time,
                 "end_time": s.end_time,
+                "points": s.points,
                 "person": assigned_person,
                 "is_preferred": is_preferred,
                 "pref_rank": pref_rank,

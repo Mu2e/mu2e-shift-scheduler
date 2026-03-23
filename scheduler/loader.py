@@ -16,24 +16,47 @@ class Shift:
     date: str
     start_time: str
     end_time: str
+    points: float = 1.0
 
 
 @dataclass
 class Person:
     name: str
+    institution: str = ""
     # Ordered list of preferred shift IDs, most preferred first.
     preferences: list = field(default_factory=list)
 
 
-def load_shifts(filepath: str) -> list:
-    """Load shifts from a CSV file with columns: shift_id, date, start_time, end_time."""
+def _default_points(start_time: str, sp_config: dict) -> float:
+    """Return default shift points based on start_time and shift_points config."""
+    night_start = sp_config.get("night_start", "20:00")
+    night_end   = sp_config.get("night_end",   "08:00")
+    night_pts   = float(sp_config.get("night",   2.0))
+    day_pts     = float(sp_config.get("default", 1.0))
+    t = start_time[:5]  # normalise to HH:MM
+    if night_start > night_end:  # window wraps midnight (e.g. 20:00–08:00)
+        is_night = t >= night_start or t < night_end
+    else:
+        is_night = night_start <= t < night_end
+    return night_pts if is_night else day_pts
+
+
+def load_shifts(filepath: str, config: Optional[dict] = None) -> list:
+    """Load shifts from a CSV file.
+
+    Required columns: shift_id, date, start_time, end_time
+    Optional column:  points  (decimal; defaults computed from config if absent)
+    """
+    sp_config = (config or {}).get("shift_points", {})
     shifts = []
     seen_ids: set = set()
     with open(filepath, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        missing = {"shift_id", "date", "start_time", "end_time"} - set(reader.fieldnames or [])
+        fieldnames = set(reader.fieldnames or [])
+        missing = {"shift_id", "date", "start_time", "end_time"} - fieldnames
         if missing:
             raise ValueError(f"Shifts CSV is missing required columns: {missing}")
+        has_points_col = "points" in fieldnames
         for row in reader:
             sid = row["shift_id"].strip()
             if not sid:
@@ -41,12 +64,18 @@ def load_shifts(filepath: str) -> list:
             if sid in seen_ids:
                 raise ValueError(f"Duplicate shift_id in shifts file: '{sid}'")
             seen_ids.add(sid)
+            start = row["start_time"].strip()
+            if has_points_col and row["points"].strip():
+                pts = float(row["points"].strip())
+            else:
+                pts = _default_points(start, sp_config)
             shifts.append(
                 Shift(
                     shift_id=sid,
                     date=row["date"].strip(),
-                    start_time=row["start_time"].strip(),
+                    start_time=start,
                     end_time=row["end_time"].strip(),
+                    points=pts,
                 )
             )
     if not shifts:
@@ -58,30 +87,29 @@ def load_people(filepath: str) -> list:
     """
     Load people from a CSV file.
 
-    Expected format (variable number of preference columns):
-        name, pref_shift_1, pref_shift_2, ...
-    All columns after 'name' are treated as ordered preferred shift IDs.
-    Empty cells are skipped.
+    Required column:  name
+    Optional column:  institution
+    Remaining columns are treated as ordered preferred shift IDs (empty cells skipped).
     """
+    _RESERVED = {"name", "institution"}
     people = []
     seen_names: set = set()
     with open(filepath, newline="", encoding="utf-8") as f:
-        reader = csv.reader(f)
-        try:
-            header = next(reader)
-        except StopIteration:
-            raise ValueError("People file is empty.")
-        if not header or not header[0].strip().lower().startswith("name"):
+        reader = csv.DictReader(f)
+        if not reader.fieldnames or not reader.fieldnames[0].strip().lower().startswith("name"):
             raise ValueError("People CSV must have 'name' as the first column header.")
+        has_institution = "institution" in (reader.fieldnames or [])
+        pref_cols = [c for c in (reader.fieldnames or []) if c.strip().lower() not in _RESERVED]
         for row in reader:
-            if not row or not row[0].strip():
+            name = row["name"].strip()
+            if not name:
                 continue
-            name = row[0].strip()
             if name in seen_names:
                 raise ValueError(f"Duplicate person name in people file: '{name}'")
             seen_names.add(name)
-            preferences = [cell.strip() for cell in row[1:] if cell.strip()]
-            people.append(Person(name=name, preferences=preferences))
+            institution = row.get("institution", "").strip() if has_institution else ""
+            preferences = [row[c].strip() for c in pref_cols if row.get(c, "").strip()]
+            people.append(Person(name=name, institution=institution, preferences=preferences))
     if not people:
         raise ValueError("People file contains no data rows.")
     return people
@@ -119,9 +147,9 @@ def build_constraints(people: list, config: dict, cli_overrides: Optional[dict] 
     """
     g = config.get("global", {})
     defaults = {
-        "target": g.get("target_shifts_per_person", 3),
-        "min": g.get("min_shifts_per_person", 1),
-        "max": g.get("max_shifts_per_person", 5),
+        "target": float(g.get("target_points_per_person", g.get("target_shifts_per_person", 3))),
+        "min":    float(g.get("min_points_per_person",    g.get("min_shifts_per_person",    1))),
+        "max":    float(g.get("max_points_per_person",    g.get("max_shifts_per_person",    5))),
     }
 
     # Apply CLI overrides to global defaults
@@ -147,9 +175,9 @@ def build_constraints(people: list, config: dict, cli_overrides: Optional[dict] 
         pname = override.get("name", "").strip()
         if pname:
             per_person[pname] = {
-                "target": override.get("target", defaults["target"]),
-                "min": override.get("min", defaults["min"]),
-                "max": override.get("max", defaults["max"]),
+                "target": float(override.get("target", defaults["target"])),
+                "min":    float(override.get("min",    defaults["min"])),
+                "max":    float(override.get("max",    defaults["max"])),
             }
 
     result: dict = {}

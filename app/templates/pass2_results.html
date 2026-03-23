@@ -98,7 +98,8 @@
             <th class="sort-icon" data-col="1">Date</th>
             <th class="sort-icon" data-col="2">Start</th>
             <th class="sort-icon" data-col="3">End</th>
-            <th class="sort-icon" data-col="4">Assigned Person</th>
+            <th class="sort-icon text-center" data-col="4">Pts</th>
+            <th class="sort-icon" data-col="5">Assigned Person</th>
             <th>Preference</th>
           </tr>
         </thead>
@@ -109,6 +110,7 @@
             <td>{{ a.date }}</td>
             <td>{{ a.start_time }}</td>
             <td>{{ a.end_time }}</td>
+            <td class="text-center">{{ a.points }}</td>
             <td>
               {% if a.person == 'UNASSIGNED' %}
                 <span class="text-danger fw-semibold">UNASSIGNED</span>

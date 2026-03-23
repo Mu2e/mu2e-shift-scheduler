@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}By Institution — Mu2e Shift Scheduler{% endblock %}
+
+{% block head %}
+<style>
+  .pts-bar-container { min-width: 140px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center mb-3">
+  <h4 class="mb-0 me-auto">Shift Points by Institution</h4>
+  <a href="{{ url_for('main.results') }}" class="btn btn-outline-secondary btn-sm">
+    &larr; Back to Results
+  </a>
+</div>
+
+{% if config_summary %}
+<p class="text-muted small mb-4">
+  Based on full schedule &mdash;
+  {{ config_summary.n_shifts }} shifts, {{ config_summary.n_people }} people.
+</p>
+{% endif %}
+
+{% if inst_stats %}
+{% set max_pts = inst_stats | map(attribute='points') | max %}
+
+<!-- Summary cards -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-primary">{{ inst_stats | length }}</div>
+        <div class="text-muted small">Institutions</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-secondary">
+          {{ inst_stats | sum(attribute='n_people') }}
+        </div>
+        <div class="text-muted small">People Scheduled</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-success">
+          {{ inst_stats | sum(attribute='points') | round(1) }}
+        </div>
+        <div class="text-muted small">Total Points</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-info">
+          {{ inst_stats | sum(attribute='shifts') }}
+        </div>
+        <div class="text-muted small">Total Shifts</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Institution table -->
+<div class="card">
+  <div class="card-header fw-semibold">Points by Institution</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Institution</th>
+            <th class="text-center">People</th>
+            <th class="text-center">Shifts</th>
+            <th class="text-center">Points</th>
+            <th class="text-center">Pts / Person</th>
+            <th style="min-width:180px">Share</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set total_pts = inst_stats | sum(attribute='points') %}
+          {% for row in inst_stats %}
+          {% set pct = (row.points / max_pts * 100) | int if max_pts > 0 else 0 %}
+          {% set share_pct = (row.points / total_pts * 100) | round(1) if total_pts > 0 else 0 %}
+          <tr>
+            <td class="fw-semibold">{{ row.institution }}</td>
+            <td class="text-center">{{ row.n_people }}</td>
+            <td class="text-center">{{ row.shifts }}</td>
+            <td class="text-center fw-semibold">{{ row.points }}</td>
+            <td class="text-center text-muted">
+              {{ (row.points / row.n_people) | round(2) if row.n_people > 0 else '—' }}
+            </td>
+            <td class="pts-bar-container">
+              <div class="d-flex align-items-center gap-2">
+                <div class="progress flex-grow-1" style="height:18px;">
+                  <div class="progress-bar bg-primary"
+                       role="progressbar"
+                       style="width: {{ pct }}%"
+                       aria-valuenow="{{ row.points }}"
+                       aria-valuemin="0"
+                       aria-valuemax="{{ max_pts }}">
+                  </div>
+                </div>
+                <small class="text-muted" style="min-width:3rem;">{{ share_pct }}%</small>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light">
+          <tr>
+            <td class="fw-semibold">Total</td>
+            <td class="text-center fw-semibold">{{ inst_stats | sum(attribute='n_people') }}</td>
+            <td class="text-center fw-semibold">{{ inst_stats | sum(attribute='shifts') }}</td>
+            <td class="text-center fw-semibold">{{ total_pts | round(1) }}</td>
+            <td></td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<div class="alert alert-info">No institution data available in the current results.</div>
+{% endif %}
+
+{% endblock %}

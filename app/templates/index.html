@@ -46,38 +46,39 @@
 
       <!-- Constraints -->
       <div class="card mb-4">
-        <div class="card-header fw-semibold">Shift Constraints</div>
+        <div class="card-header fw-semibold">Shift-Point Constraints</div>
         <div class="card-body">
           <p class="text-muted small mb-3">
-            These apply globally. Per-person overrides can be set in
-            <code>config.yaml</code>.
+            Constraints are in <strong>shift-points</strong> (normal&nbsp;=&nbsp;1.0&nbsp;pt,
+            night&nbsp;=&nbsp;2.0&nbsp;pts by default).
+            Per-person overrides can be set in <code>config.yaml</code>.
           </p>
           <div class="row g-3">
 
             <div class="col-md-4">
               <label class="form-label" for="target">
-                Target shifts / person
+                Target points / person
               </label>
               <input class="form-control" type="number" id="target" name="target"
-                     value="{{ defaults.target }}" min="0" max="9999">
+                     value="{{ defaults.target }}" min="0" max="9999" step="0.5">
               <div class="form-text">Soft goal; deviations are penalized.</div>
             </div>
 
             <div class="col-md-4">
               <label class="form-label" for="min">
-                Minimum shifts / person
+                Minimum points / person
               </label>
               <input class="form-control" type="number" id="min" name="min"
-                     value="{{ defaults.min }}" min="0" max="9999">
+                     value="{{ defaults.min }}" min="0" max="9999" step="0.5">
               <div class="form-text">Hard lower bound.</div>
             </div>
 
             <div class="col-md-4">
               <label class="form-label" for="max">
-                Maximum shifts / person
+                Maximum points / person
               </label>
               <input class="form-control" type="number" id="max" name="max"
-                     value="{{ defaults.max }}" min="1" max="9999">
+                     value="{{ defaults.max }}" min="0" max="9999" step="0.5">
               <div class="form-text">Hard upper bound.</div>
             </div>
 
@@ -111,19 +112,19 @@
 
               <div class="col-md-4">
                 <label class="form-label" for="pass2_min">
-                  Pass 2 minimum shifts / person
+                  Pass 2 minimum points / person
                 </label>
                 <input class="form-control" type="number" id="pass2_min" name="pass2_min"
-                       value="{{ defaults.pass2_min }}" min="0" max="9999">
+                       value="{{ defaults.pass2_min }}" min="0" max="9999" step="0.5">
                 <div class="form-text">Hard lower bound for the second solve pass.</div>
               </div>
 
               <div class="col-md-4">
                 <label class="form-label" for="pass2_max">
-                  Pass 2 maximum shifts / person
+                  Pass 2 maximum points / person
                 </label>
                 <input class="form-control" type="number" id="pass2_max" name="pass2_max"
-                       value="{{ defaults.pass2_max }}" min="1" max="9999">
+                       value="{{ defaults.pass2_max }}" min="0" max="9999" step="0.5">
                 <div class="form-text">Hard upper bound for the second solve pass.</div>
               </div>
 
@@ -154,10 +155,14 @@
           <div class="card h-100">
             <div class="card-header small fw-semibold">shifts.csv</div>
             <div class="card-body">
-              <pre class="mb-0 small">shift_id,date,start_time,end_time
-shift-0001,2026-04-01,07:00,15:00
-shift-0002,2026-04-01,15:00,23:00
-shift-0003,2026-04-02,07:00,15:00</pre>
+              <pre class="mb-0 small">shift_id,date,start_time,end_time,points
+shift-0001,2026-04-01,07:00,15:00,1.0
+shift-0002,2026-04-01,15:00,23:00,1.0
+shift-0003,2026-04-01,23:00,07:00,2.0</pre>
+              <p class="text-muted small mt-2 mb-0">
+                <code>points</code> is optional; defaults to 2.0 for night shifts,
+                1.0 otherwise (configurable in <code>config.yaml</code>).
+              </p>
             </div>
           </div>
         </div>
@@ -165,10 +170,13 @@ shift-0003,2026-04-02,07:00,15:00</pre>
           <div class="card h-100">
             <div class="card-header small fw-semibold">people.csv</div>
             <div class="card-body">
-              <pre class="mb-0 small">name,pref_1,pref_2,pref_3
-Alice,shift-0001,shift-0003,shift-0005
-Bob,shift-0002,shift-0004
-Carol,shift-0001,shift-0002,shift-0003</pre>
+              <pre class="mb-0 small">name,institution,pref_1,pref_2,pref_3
+Alice,Fermilab,shift-0001,shift-0003,shift-0005
+Bob,Argonne,shift-0002,shift-0004
+Carol,Fermilab,shift-0001,shift-0002,shift-0003</pre>
+              <p class="text-muted small mt-2 mb-0">
+                <code>institution</code> is optional.
+              </p>
             </div>
           </div>
         </div>

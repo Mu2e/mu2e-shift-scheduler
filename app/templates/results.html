@@ -71,7 +71,7 @@
 <!-- ── Config used ───────────────────────────────────────────── -->
 {% if config_summary %}
 <p class="text-muted small mb-4">
-  Constraints used &mdash;
+  Constraints used (in shift-points) &mdash;
   target: <strong>{{ config_summary.target }}</strong>,
   min: <strong>{{ config_summary.min }}</strong>,
   max: <strong>{{ config_summary.max }}</strong>,
@@ -94,6 +94,9 @@
     Pass 2 Results
   </a>
   {% endif %}
+  <a href="{{ url_for('main.results_by_institution') }}" class="btn btn-outline-primary">
+    By Institution
+  </a>
   <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary ms-auto">
     &#8617; New Schedule
   </a>
@@ -115,7 +118,9 @@
             <th class="sort-icon" data-col="1">Date</th>
             <th class="sort-icon" data-col="2">Start</th>
             <th class="sort-icon" data-col="3">End</th>
-            <th class="sort-icon" data-col="4">Assigned Person</th>
+            <th class="sort-icon text-center" data-col="4">Pts</th>
+            <th class="sort-icon" data-col="5">Assigned Person</th>
+            <th class="sort-icon" data-col="6">Institution</th>
             <th>Preference</th>
           </tr>
         </thead>
@@ -126,6 +131,7 @@
             <td>{{ a.date }}</td>
             <td>{{ a.start_time }}</td>
             <td>{{ a.end_time }}</td>
+            <td class="text-center">{{ a.points }}</td>
             <td>
               {% if a.person == 'UNASSIGNED' %}
                 <span class="text-danger fw-semibold">UNASSIGNED</span>
@@ -133,6 +139,7 @@
                 {{ a.person }}
               {% endif %}
             </td>
+            <td>{{ a.institution or '—' }}</td>
             <td>
               {% if a.person == 'UNASSIGNED' %}
                 <span class="badge bg-danger">—</span>
@@ -161,7 +168,9 @@
         <thead>
           <tr>
             <th>Name</th>
-            <th class="text-center">Assigned</th>
+            <th>Institution</th>
+            <th class="text-center">Shifts</th>
+            <th class="text-center">Points</th>
             <th class="text-center">Target</th>
             <th class="text-center">Min</th>
             <th class="text-center">Max</th>
@@ -172,10 +181,12 @@
         </thead>
         <tbody>
           {% for ps in stats.person_stats %}
-          {% set pct = [(ps.assigned / ps.max * 100) | int, 100] | min if ps.max > 0 else 0 %}
+          {% set pct = [(ps.points_assigned / ps.max * 100) | int, 100] | min if ps.max > 0 else 0 %}
           <tr>
             <td>{{ ps.name }}</td>
+            <td class="text-muted small">{{ ps.institution or '—' }}</td>
             <td class="text-center fw-semibold">{{ ps.assigned }}</td>
+            <td class="text-center fw-semibold">{{ ps.points_assigned }}</td>
             <td class="text-center text-muted">{{ ps.target }}</td>
             <td class="text-center text-muted">{{ ps.min }}</td>
             <td class="text-center text-muted">{{ ps.max }}</td>
@@ -202,10 +213,10 @@
                   {{ 'bg-success' if ps.deviation == 0 else ('bg-warning' if ps.deviation | abs <= 1 else 'bg-danger') }}"
                   role="progressbar"
                   style="width: {{ pct }}%"
-                  aria-valuenow="{{ ps.assigned }}"
+                  aria-valuenow="{{ ps.points_assigned }}"
                   aria-valuemin="0"
                   aria-valuemax="{{ ps.max }}">
-                  {{ ps.assigned }}
+                  {{ ps.points_assigned }}
                 </div>
               </div>
             </td>

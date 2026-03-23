@@ -19,7 +19,7 @@ from flask import (
     url_for,
 )
 
-from scheduler.exporter import as_csv_string, as_json_string, compute_stats
+from scheduler.exporter import as_csv_string, as_json_string, compute_stats, compute_institution_stats
 from scheduler.loader import build_constraints, load_config, load_people, load_shifts, validate
 from scheduler.solver import InfeasibleError, solve_two_pass as solve
 
@@ -98,12 +98,12 @@ def index():
     config = load_config(current_app.config.get("SCHEDULER_CONFIG", "config.yaml"))
     g = config.get("global", {})
     defaults = {
-        "target": g.get("target_shifts_per_person", 3),
-        "min": g.get("min_shifts_per_person", 1),
-        "max": g.get("max_shifts_per_person", 5),
-        "alpha": config.get("alpha", 1.0),
-        "pass2_min": g.get("pass2_min_shifts_per_person", 0),
-        "pass2_max": g.get("pass2_max_shifts_per_person", 1000),
+        "target":    g.get("target_points_per_person", g.get("target_shifts_per_person", 3.0)),
+        "min":       g.get("min_points_per_person",    g.get("min_shifts_per_person",    1.0)),
+        "max":       g.get("max_points_per_person",    g.get("max_shifts_per_person",    5.0)),
+        "alpha":     config.get("alpha", 1.0),
+        "pass2_min": g.get("pass2_min_points_per_person", g.get("pass2_min_shifts_per_person", 0.0)),
+        "pass2_max": g.get("pass2_max_points_per_person", g.get("pass2_max_shifts_per_person", 1000.0)),
     }
     return render_template("index.html", defaults=defaults)
 
@@ -115,19 +115,19 @@ def run_solve():
 
     if not shifts_file or not shifts_file.filename:
         flash("A shifts CSV file is required.", "danger")
-        return redirect(url_for("main.schedule"))
+        return redirect(url_for("main.index"))
     if not people_file or not people_file.filename:
         flash("A people CSV file is required.", "danger")
-        return redirect(url_for("main.schedule"))
+        return redirect(url_for("main.index"))
 
     cli_overrides = {
-        "target": _get_int("target"),
-        "min": _get_int("min"),
-        "max": _get_int("max"),
+        "target": _get_float("target"),
+        "min": _get_float("min"),
+        "max": _get_float("max"),
     }
     alpha = _get_float("alpha")
-    pass2_min_form = _get_int("pass2_min")
-    pass2_max_form = _get_int("pass2_max")
+    pass2_min_form = _get_float("pass2_min")
+    pass2_max_form = _get_float("pass2_max")
 
     shifts_path = people_path = None
     try:
@@ -146,7 +146,7 @@ def run_solve():
             config["alpha"] = alpha
 
         # Load and validate data
-        shifts = load_shifts(shifts_path)
+        shifts = load_shifts(shifts_path, config)
         people = load_people(people_path)
         validate(shifts, people)
 
@@ -156,8 +156,8 @@ def run_solve():
         # Solve
         effective_alpha = alpha if alpha is not None else config.get("alpha", 1.0)
         g = config.get("global", {})
-        effective_pass2_min = pass2_min_form if pass2_min_form is not None else g.get("pass2_min_shifts_per_person", 0)
-        effective_pass2_max = pass2_max_form if pass2_max_form is not None else g.get("pass2_max_shifts_per_person", 1000)
+        effective_pass2_min = pass2_min_form if pass2_min_form is not None else float(g.get("pass2_min_points_per_person", g.get("pass2_min_shifts_per_person", 0)))
+        effective_pass2_max = pass2_max_form if pass2_max_form is not None else float(g.get("pass2_max_points_per_person", g.get("pass2_max_shifts_per_person", 1000)))
         results, pass2_results = solve(
             shifts, people, constraints,
             alpha=effective_alpha,
@@ -165,26 +165,33 @@ def run_solve():
             pass2_max=effective_pass2_max,
         )
 
+        # Enrich results with institution
+        person_inst = {p.name: p.institution for p in people}
+        for r in results:
+            r["institution"] = person_inst.get(r["person"], "")
+        for r in pass2_results:
+            r["institution"] = person_inst.get(r["person"], "")
+
         # Store results
         _cleanup_old_results()
         config_summary = {
-            "target": cli_overrides.get("target") or g.get("target_shifts_per_person", 3),
-            "min": cli_overrides.get("min") or g.get("min_shifts_per_person", 1),
-            "max": cli_overrides.get("max") or g.get("max_shifts_per_person", 5),
-            "alpha": effective_alpha,
+            "target":    cli_overrides.get("target") or g.get("target_points_per_person", g.get("target_shifts_per_person", 3.0)),
+            "min":       cli_overrides.get("min")    or g.get("min_points_per_person",    g.get("min_shifts_per_person",    1.0)),
+            "max":       cli_overrides.get("max")    or g.get("max_points_per_person",    g.get("max_shifts_per_person",    5.0)),
+            "alpha":     effective_alpha,
             "pass2_min": effective_pass2_min,
             "pass2_max": effective_pass2_max,
-            "n_shifts": len(shifts),
-            "n_people": len(people),
+            "n_shifts":  len(shifts),
+            "n_people":  len(people),
         }
         session["results_path"] = _save_session_data(results, constraints, config_summary, pass2_results)
 
     except (ValueError, InfeasibleError) as exc:
         flash(str(exc), "danger")
-        return redirect(url_for("main.schedule"))
+        return redirect(url_for("main.index"))
     except Exception as exc:
         flash(f"Unexpected error: {exc}", "danger")
-        return redirect(url_for("main.schedule"))
+        return redirect(url_for("main.index"))
     finally:
         for p in (shifts_path, people_path):
             if p:
@@ -201,7 +208,7 @@ def results():
     data, constraints, config_summary, pass2_results = _load_session_data()
     if data is None:
         flash("No results found. Please run the scheduler first.", "warning")
-        return redirect(url_for("main.schedule"))
+        return redirect(url_for("main.index"))
 
     stats = compute_stats(data, constraints)
     return render_template(
@@ -218,7 +225,7 @@ def results_pass2():
     data, constraints, config_summary, pass2_results = _load_session_data()
     if data is None:
         flash("No results found. Please run the scheduler first.", "warning")
-        return redirect(url_for("main.schedule"))
+        return redirect(url_for("main.index"))
     if not pass2_results:
         flash("All shifts were filled by preferred people — no second pass was needed.", "info")
         return redirect(url_for("main.results"))
@@ -232,12 +239,26 @@ def results_pass2():
     )
 
 
+@bp.route("/results/by-institution")
+def results_by_institution():
+    data, constraints, config_summary, _ = _load_session_data()
+    if data is None:
+        flash("No results found. Please run the scheduler first.", "warning")
+        return redirect(url_for("main.index"))
+    inst_stats = compute_institution_stats(data)
+    return render_template(
+        "institution_stats.html",
+        inst_stats=inst_stats,
+        config_summary=config_summary,
+    )
+
+
 @bp.route("/download/csv")
 def download_csv():
     data, constraints, _, _p2 = _load_session_data()
     if data is None:
         flash("No results to download.", "warning")
-        return redirect(url_for("main.schedule"))
+        return redirect(url_for("main.index"))
     content = as_csv_string(data).encode("utf-8")
     return send_file(
         io.BytesIO(content),
@@ -252,7 +273,7 @@ def download_json():
     data, constraints, _, _p2 = _load_session_data()
     if data is None:
         flash("No results to download.", "warning")
-        return redirect(url_for("main.schedule"))
+        return redirect(url_for("main.index"))
     content = as_json_string(data).encode("utf-8")
     return send_file(
         io.BytesIO(content),

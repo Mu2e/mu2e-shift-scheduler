@@ -82,6 +82,17 @@ for s in shifts:
 # ---------------------------------------------------------------------------
 # People
 # ---------------------------------------------------------------------------
+INSTITUTIONS = [
+    "Fermilab",
+    "Argonne",
+    "University of Minnesota",
+    "University of Michigan",
+    "Caltech",
+    "MIT",
+    "University of Wisconsin",
+    "Boston University",
+]
+
 FIRST_NAMES = [
     "Alice", "Bob", "Carol", "Dave", "Eve", "Frank", "Grace", "Hank",
     "Iris", "Jack", "Karen", "Liam", "Mia", "Noah", "Olivia", "Peter",
@@ -161,7 +172,11 @@ people = []
 for i, name in enumerate(names):
     profile = PROFILES[i % len(PROFILES)]
     prefs = build_preferences(profile)
-    people.append({"name": name, "preferences": prefs})
+    people.append({
+        "name": name,
+        "institution": INSTITUTIONS[i % len(INSTITUTIONS)],
+        "preferences": prefs,
+    })
 
 # ---------------------------------------------------------------------------
 # Write CSVs
@@ -169,20 +184,29 @@ for i, name in enumerate(names):
 shifts_path = "sample_data/shifts_large.csv"
 people_path = "sample_data/people_large.csv"
 
+NIGHT_SLOTS = {0, 1, 5}  # slots whose start_time falls in the night window (20:00–08:00)
+
 with open(shifts_path, "w", newline="", encoding="utf-8") as f:
-    writer = csv.DictWriter(f, fieldnames=["shift_id", "date", "start_time", "end_time"])
+    writer = csv.DictWriter(f, fieldnames=["shift_id", "date", "start_time", "end_time", "points"])
     writer.writeheader()
     for s in shifts:
-        writer.writerow({k: s[k] for k in ["shift_id", "date", "start_time", "end_time"]})
+        pts = 2.0 if s["slot"] in NIGHT_SLOTS else 1.0
+        writer.writerow({
+            "shift_id":   s["shift_id"],
+            "date":       s["date"],
+            "start_time": s["start_time"],
+            "end_time":   s["end_time"],
+            "points":     pts,
+        })
 
 max_prefs = max(len(p["preferences"]) for p in people)
 pref_cols = [f"pref_{i + 1}" for i in range(max_prefs)]
 
 with open(people_path, "w", newline="", encoding="utf-8") as f:
-    writer = csv.DictWriter(f, fieldnames=["name"] + pref_cols, extrasaction="ignore")
+    writer = csv.DictWriter(f, fieldnames=["name", "institution"] + pref_cols, extrasaction="ignore")
     writer.writeheader()
     for p in people:
-        row: dict = {"name": p["name"]}
+        row: dict = {"name": p["name"], "institution": p["institution"]}
         for idx, sid in enumerate(p["preferences"]):
             row[f"pref_{idx + 1}"] = sid
         writer.writerow(row)
