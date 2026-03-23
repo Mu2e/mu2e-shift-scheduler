@@ -1,0 +1,9 @@
+name,pref_1,pref_2,pref_3,pref_4,pref_5
+Alice,shift-0001,shift-0004,shift-0007,shift-0010,shift-0013
+Bob,shift-0002,shift-0005,shift-0008,shift-0011,shift-0014
+Carol,shift-0003,shift-0006,shift-0009,shift-0012,shift-0015
+Dave,shift-0001,shift-0002,shift-0016,shift-0017,shift-0019
+Eve,shift-0004,shift-0005,shift-0018,shift-0020,shift-0022
+Frank,shift-0007,shift-0008,shift-0021,shift-0023,shift-0024
+Grace,shift-0010,shift-0013,shift-0016,shift-0019,shift-0022
+Hank,shift-0003,shift-0009,shift-0015,shift-0018,shift-0021

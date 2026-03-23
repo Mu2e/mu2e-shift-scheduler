@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block title %}Results — Mu2e Shift Scheduler{% endblock %}
+
+{% block head %}
+<style>
+  .row-preferred   { background-color: #d1e7dd !important; }
+  .row-unassigned  { background-color: #f8d7da !important; }
+  .sort-icon { cursor: pointer; user-select: none; }
+  .sort-icon::after { content: " ⇅"; color: #adb5bd; font-size: .75em; }
+  .sort-icon.asc::after  { content: " ↑"; color: #fff; }
+  .sort-icon.desc::after { content: " ↓"; color: #fff; }
+  .stat-bar-container { min-width: 120px; }
+  /* Fix Bootstrap's dark th + row class conflict */
+  .table-striped > tbody > tr.row-preferred:nth-of-type(odd),
+  .table-striped > tbody > tr.row-preferred:nth-of-type(even) {
+    --bs-table-accent-bg: transparent;
+    background-color: #d1e7dd !important;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Summary stats row ─────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-primary">
+          {{ stats.filled_shifts }}<span class="text-muted fs-5"> / {{ stats.total_shifts }}</span>
+        </div>
+        <div class="text-muted small">Shifts Filled</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold {{ 'text-success' if stats.preference_pct >= 60 else 'text-warning' }}">
+          {{ stats.preference_pct }}%
+        </div>
+        <div class="text-muted small">Preferred Assignments</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold {{ 'text-danger' if stats.unfilled_shifts else 'text-success' }}">
+          {{ stats.unfilled_shifts }}
+        </div>
+        <div class="text-muted small">Unfilled Shifts</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="card text-center h-100">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-secondary">{{ stats.person_stats | length }}</div>
+        <div class="text-muted small">People Scheduled</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Config used ───────────────────────────────────────────── -->
+{% if config_summary %}
+<p class="text-muted small mb-4">
+  Constraints used &mdash;
+  target: <strong>{{ config_summary.target }}</strong>,
+  min: <strong>{{ config_summary.min }}</strong>,
+  max: <strong>{{ config_summary.max }}</strong>,
+  &alpha;: <strong>{{ config_summary.alpha }}</strong>
+  &nbsp;&bull;&nbsp;
+  {{ config_summary.n_shifts }} shifts, {{ config_summary.n_people }} people
+</p>
+{% endif %}
+
+<!-- ── Download buttons ──────────────────────────────────────── -->
+<div class="d-flex gap-2 mb-4 flex-wrap">
+  <a href="/download/csv" class="btn btn-success">
+    &#11123; Download CSV
+  </a>
+  <a href="/download/json" class="btn btn-info text-white">
+    &#11123; Download JSON
+  </a>
+  <a href="/" class="btn btn-outline-secondary ms-auto">
+    &#8617; New Schedule
+  </a>
+</div>
+
+<!-- ── Assignment table ──────────────────────────────────────── -->
+<div class="card mb-5">
+  <div class="card-header d-flex align-items-center">
+    <span class="fw-semibold me-auto">Shift Assignments</span>
+    <input type="text" class="form-control form-control-sm w-auto"
+           id="tableFilter" placeholder="Filter&hellip;" style="max-width:200px">
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0" id="assignTable">
+        <thead>
+          <tr>
+            <th class="sort-icon" data-col="0">Shift ID</th>
+            <th class="sort-icon" data-col="1">Date</th>
+            <th class="sort-icon" data-col="2">Start</th>
+            <th class="sort-icon" data-col="3">End</th>
+            <th class="sort-icon" data-col="4">Assigned Person</th>
+            <th>Preference</th>
+          </tr>
+        </thead>
+        <tbody id="assignBody">
+          {% for a in assignments %}
+          <tr class="{{ 'row-unassigned' if a.person == 'UNASSIGNED' else ('row-preferred' if a.is_preferred else '') }}">
+            <td><code>{{ a.shift_id }}</code></td>
+            <td>{{ a.date }}</td>
+            <td>{{ a.start_time }}</td>
+            <td>{{ a.end_time }}</td>
+            <td>
+              {% if a.person == 'UNASSIGNED' %}
+                <span class="text-danger fw-semibold">UNASSIGNED</span>
+              {% else %}
+                {{ a.person }}
+              {% endif %}
+            </td>
+            <td>
+              {% if a.person == 'UNASSIGNED' %}
+                <span class="badge bg-danger">—</span>
+              {% elif a.is_preferred %}
+                <span class="badge badge-preferred">
+                  &#9733; Pref #{{ a.pref_rank }}
+                </span>
+              {% else %}
+                <span class="badge badge-not-preferred">Not preferred</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── Per-person stats ──────────────────────────────────────── -->
+<div class="card mb-4">
+  <div class="card-header fw-semibold">Per-Person Summary</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th class="text-center">Assigned</th>
+            <th class="text-center">Target</th>
+            <th class="text-center">Min</th>
+            <th class="text-center">Max</th>
+            <th class="text-center">Deviation</th>
+            <th class="text-center">Preferred</th>
+            <th style="min-width:160px">Load</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ps in stats.person_stats %}
+          {% set pct = [(ps.assigned / ps.max * 100) | int, 100] | min if ps.max > 0 else 0 %}
+          <tr>
+            <td>{{ ps.name }}</td>
+            <td class="text-center fw-semibold">{{ ps.assigned }}</td>
+            <td class="text-center text-muted">{{ ps.target }}</td>
+            <td class="text-center text-muted">{{ ps.min }}</td>
+            <td class="text-center text-muted">{{ ps.max }}</td>
+            <td class="text-center">
+              {% if ps.deviation > 0 %}
+                <span class="text-warning">+{{ ps.deviation }}</span>
+              {% elif ps.deviation < 0 %}
+                <span class="text-danger">{{ ps.deviation }}</span>
+              {% else %}
+                <span class="text-success">0</span>
+              {% endif %}
+            </td>
+            <td class="text-center">
+              {% if ps.assigned > 0 %}
+                {{ ps.preferred }} / {{ ps.assigned }}
+                ({{ (ps.preferred / ps.assigned * 100) | round(0) | int }}%)
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              <div class="progress" style="height:18px;">
+                <div class="progress-bar
+                  {{ 'bg-success' if ps.deviation == 0 else ('bg-warning' if ps.deviation | abs <= 1 else 'bg-danger') }}"
+                  role="progressbar"
+                  style="width: {{ pct }}%"
+                  aria-valuenow="{{ ps.assigned }}"
+                  aria-valuemin="0"
+                  aria-valuemax="{{ ps.max }}">
+                  {{ ps.assigned }}
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Table filter ──────────────────────────────────────────────────────────
+document.getElementById("tableFilter").addEventListener("input", function () {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll("#assignBody tr").forEach(function (row) {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
+  });
+});
+
+// ── Table sort ────────────────────────────────────────────────────────────
+(function () {
+  const table = document.getElementById("assignTable");
+  const tbody = document.getElementById("assignBody");
+  let lastCol = -1, lastDir = 1;
+
+  table.querySelectorAll("th.sort-icon").forEach(function (th) {
+    th.addEventListener("click", function () {
+      const col = parseInt(th.dataset.col);
+      const dir = (col === lastCol) ? -lastDir : 1;
+      lastCol = col; lastDir = dir;
+
+      table.querySelectorAll("th.sort-icon").forEach(function (h) {
+        h.classList.remove("asc", "desc");
+      });
+      th.classList.add(dir === 1 ? "asc" : "desc");
+
+      const rows = Array.from(tbody.querySelectorAll("tr"));
+      rows.sort(function (a, b) {
+        const av = a.cells[col].textContent.trim().toLowerCase();
+        const bv = b.cells[col].textContent.trim().toLowerCase();
+        return dir * av.localeCompare(bv, undefined, {numeric: true});
+      });
+      rows.forEach(function (r) { tbody.appendChild(r); });
+    });
+  });
+}());
+</script>
+{% endblock %}

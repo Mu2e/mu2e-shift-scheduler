@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Configure — Mu2e Shift Scheduler{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+
+    <h2 class="mb-1">Schedule Configuration</h2>
+    <p class="text-muted mb-4">
+      Upload your input files, set constraints, and run the optimizer.
+    </p>
+
+    <form method="post" action="/solve" enctype="multipart/form-data" id="scheduleForm">
+
+      <!-- Input files -->
+      <div class="card mb-4">
+        <div class="card-header fw-semibold">Input Files</div>
+        <div class="card-body">
+
+          <div class="mb-3">
+            <label class="form-label" for="shifts_file">
+              Shifts CSV
+              <span class="text-muted fw-normal small">
+                &mdash; columns: <code>shift_id, date, start_time, end_time</code>
+              </span>
+            </label>
+            <input class="form-control" type="file" id="shifts_file"
+                   name="shifts_file" accept=".csv" required>
+          </div>
+
+          <div class="mb-0">
+            <label class="form-label" for="people_file">
+              People CSV
+              <span class="text-muted fw-normal small">
+                &mdash; columns: <code>name, pref_shift_1, pref_shift_2, ...</code>
+              </span>
+            </label>
+            <input class="form-control" type="file" id="people_file"
+                   name="people_file" accept=".csv" required>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Constraints -->
+      <div class="card mb-4">
+        <div class="card-header fw-semibold">Shift Constraints</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            These apply globally. Per-person overrides can be set in
+            <code>config.yaml</code>.
+          </p>
+          <div class="row g-3">
+
+            <div class="col-md-4">
+              <label class="form-label" for="target">
+                Target shifts / person
+              </label>
+              <input class="form-control" type="number" id="target" name="target"
+                     value="{{ defaults.target }}" min="0" max="9999">
+              <div class="form-text">Soft goal; deviations are penalized.</div>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label" for="min">
+                Minimum shifts / person
+              </label>
+              <input class="form-control" type="number" id="min" name="min"
+                     value="{{ defaults.min }}" min="0" max="9999">
+              <div class="form-text">Hard lower bound.</div>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label" for="max">
+                Maximum shifts / person
+              </label>
+              <input class="form-control" type="number" id="max" name="max"
+                     value="{{ defaults.max }}" min="1" max="9999">
+              <div class="form-text">Hard upper bound.</div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Advanced -->
+      <div class="card mb-4">
+        <div class="card-header fw-semibold">
+          Advanced
+          <button class="btn btn-link btn-sm text-muted float-end py-0"
+                  type="button" data-bs-toggle="collapse"
+                  data-bs-target="#advancedPanel">toggle</button>
+        </div>
+        <div class="collapse" id="advancedPanel">
+          <div class="card-body">
+            <div class="col-md-4">
+              <label class="form-label" for="alpha">
+                Load-balancing weight (&alpha;)
+              </label>
+              <input class="form-control" type="number" id="alpha" name="alpha"
+                     value="{{ defaults.alpha }}" min="0" step="0.1">
+              <div class="form-text">
+                Higher &alpha; → prioritize equitable shift counts.<br>
+                Lower &alpha; → prioritize personal preferences.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <div class="d-flex gap-2 align-items-center">
+        <button type="submit" class="btn btn-primary px-4" id="submitBtn">
+          <span id="btnText">Run Scheduler</span>
+          <span id="btnSpinner" class="spinner-border spinner-border-sm ms-2 d-none"
+                role="status"></span>
+        </button>
+        <span class="text-muted small" id="solvingMsg" style="display:none">
+          Solving&hellip; this may take a moment for large problems.
+        </span>
+      </div>
+
+    </form>
+
+    <!-- File format help -->
+    <div class="mt-5">
+      <h5>File Format Reference</h5>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="card h-100">
+            <div class="card-header small fw-semibold">shifts.csv</div>
+            <div class="card-body">
+              <pre class="mb-0 small">shift_id,date,start_time,end_time
+shift-0001,2026-04-01,07:00,15:00
+shift-0002,2026-04-01,15:00,23:00
+shift-0003,2026-04-02,07:00,15:00</pre>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card h-100">
+            <div class="card-header small fw-semibold">people.csv</div>
+            <div class="card-body">
+              <pre class="mb-0 small">name,pref_1,pref_2,pref_3
+Alice,shift-0001,shift-0003,shift-0005
+Bob,shift-0002,shift-0004
+Carol,shift-0001,shift-0002,shift-0003</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="text-muted small mt-2">
+        Preferences are ordered (leftmost = most preferred). People may list
+        any number of preferred shifts, or none at all.
+      </p>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById("scheduleForm").addEventListener("submit", function () {
+    document.getElementById("submitBtn").disabled = true;
+    document.getElementById("btnSpinner").classList.remove("d-none");
+    document.getElementById("solvingMsg").style.display = "inline";
+  });
+</script>
+{% endblock %}
