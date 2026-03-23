@@ -6,12 +6,23 @@ Produces:
   sample_data/shifts_large.csv  — 1092 shifts (26 weeks × 7 days × 6 shifts/day)
   sample_data/people_large.csv  — 200 people with realistic shift preferences
 """
+import argparse
 import csv
 import random
 from collections import defaultdict
 from datetime import date, timedelta
 
-random.seed(42)  # reproducible
+parser = argparse.ArgumentParser(description="Generate sample shift/people CSV files.")
+parser.add_argument(
+    "--seed",
+    type=int,
+    default=42,
+    metavar="N",
+    help="Random seed for reproducibility (default: 42).",
+)
+args = parser.parse_args()
+
+random.seed(args.seed)
 
 # ---------------------------------------------------------------------------
 # Shifts
@@ -106,15 +117,15 @@ PROFILES = [
     # 0 — day shift, weekdays only
     {"slots": [2, 3],       "dows": list(range(5)),  "num_prefs": (20, 30)},
     # 1 — evening, any day
-    {"slots": [4, 5],       "dows": list(range(7)),  "num_prefs": (18, 28)},
+    {"slots": [4, 5],       "dows": list(range(7)),  "num_prefs": (20, 28)},
     # 2 — night owl (graveyard + late evening)
-    {"slots": [0, 5],       "dows": list(range(7)),  "num_prefs": (15, 25)},
+    {"slots": [0, 5],       "dows": list(range(7)),  "num_prefs": (20, 25)},
     # 3 — flexible day (morning through early evening)
-    {"slots": [2, 3, 4],    "dows": list(range(7)),  "num_prefs": (22, 32)},
+    {"slots": [2, 3, 4],    "dows": list(range(7)),  "num_prefs": (20, 32)},
     # 4 — weekend warrior
-    {"slots": [2, 3, 4],    "dows": [5, 6],          "num_prefs": (12, 20)},
+    {"slots": [2, 3, 4],    "dows": [5, 6],          "num_prefs": (20, 20)},
     # 5 — early bird (04:00–12:00 window)
-    {"slots": [1, 2],       "dows": list(range(5)),  "num_prefs": (18, 26)},
+    {"slots": [1, 2],       "dows": list(range(5)),  "num_prefs": (20, 26)},
 ]
 
 def build_preferences(profile: dict) -> list:

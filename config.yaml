@@ -2,9 +2,11 @@
 # All values here are defaults and can be overridden by CLI arguments.
 
 global:
-  target_shifts_per_person: 6   # Soft target: penalty applied when actual != target
-  min_shifts_per_person: 4      # Hard minimum: each person must have at least this many
-  max_shifts_per_person: 8      # Hard maximum: each person may have at most this many
+  target_shifts_per_person: 2  # Soft target: penalty applied when actual != target
+  min_shifts_per_person: 1     # Hard minimum: each person must have at least this many
+  max_shifts_per_person: 4     # Hard maximum: each person may have at most this many
+  pass2_min_shifts_per_person: 0    # Pass-2 hard minimum (re-solve of non-preferred shifts)
+  pass2_max_shifts_per_person: 1 # Pass-2 hard maximum
 
 # alpha controls the tradeoff between preference satisfaction and load balancing.
 # Higher alpha => prioritize equitable shift counts over personal preferences.

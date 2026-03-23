@@ -86,11 +86,18 @@ def cmd_solve(args: argparse.Namespace) -> None:
 
     constraints = build_constraints(people, config, cli_overrides)
     effective_alpha = args.alpha if args.alpha is not None else config.get("alpha", 1.0)
+    g = config.get("global", {})
+    effective_pass2_min = args.pass2_min if args.pass2_min is not None else g.get("pass2_min_shifts_per_person", 0)
+    effective_pass2_max = args.pass2_max if args.pass2_max is not None else g.get("pass2_max_shifts_per_person", 1000)
 
     print(f"Loaded {len(shifts)} shifts and {len(people)} people. Solving...")
-    results, _ = solve(shifts, people, constraints, alpha=effective_alpha)
+    results, _ = solve(
+        shifts, people, constraints,
+        alpha=effective_alpha,
+        pass2_min=effective_pass2_min,
+        pass2_max=effective_pass2_max,
+    )
 
-    g = config.get("global", {})
     config_summary = {
         "target": cli_overrides.get("target") or g.get("target_shifts_per_person", 3),
         "min": cli_overrides.get("min") or g.get("min_shifts_per_person", 1),
@@ -184,6 +191,20 @@ def build_parser() -> argparse.ArgumentParser:
             "Load-balancing weight (overrides config). "
             "Higher values penalize deviation from target more strongly."
         ),
+    )
+    sp.add_argument(
+        "--pass2-min",
+        dest="pass2_min",
+        type=int,
+        metavar="N",
+        help="Pass-2 minimum shifts per person (overrides config; default: 0).",
+    )
+    sp.add_argument(
+        "--pass2-max",
+        dest="pass2_max",
+        type=int,
+        metavar="N",
+        help="Pass-2 maximum shifts per person (overrides config; default: 1000).",
     )
 
     # ---- serve ----

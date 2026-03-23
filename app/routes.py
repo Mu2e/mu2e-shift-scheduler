@@ -92,6 +92,8 @@ def index():
         "min": g.get("min_shifts_per_person", 1),
         "max": g.get("max_shifts_per_person", 5),
         "alpha": config.get("alpha", 1.0),
+        "pass2_min": g.get("pass2_min_shifts_per_person", 0),
+        "pass2_max": g.get("pass2_max_shifts_per_person", 1000),
     }
     return render_template("index.html", defaults=defaults)
 
@@ -114,6 +116,8 @@ def run_solve():
         "max": _get_int("max"),
     }
     alpha = _get_float("alpha")
+    pass2_min_form = _get_int("pass2_min")
+    pass2_max_form = _get_int("pass2_max")
 
     shifts_path = people_path = None
     try:
@@ -141,16 +145,25 @@ def run_solve():
 
         # Solve
         effective_alpha = alpha if alpha is not None else config.get("alpha", 1.0)
-        results, pass2_results = solve(shifts, people, constraints, alpha=effective_alpha)
+        g = config.get("global", {})
+        effective_pass2_min = pass2_min_form if pass2_min_form is not None else g.get("pass2_min_shifts_per_person", 0)
+        effective_pass2_max = pass2_max_form if pass2_max_form is not None else g.get("pass2_max_shifts_per_person", 1000)
+        results, pass2_results = solve(
+            shifts, people, constraints,
+            alpha=effective_alpha,
+            pass2_min=effective_pass2_min,
+            pass2_max=effective_pass2_max,
+        )
 
         # Store results
         _cleanup_old_results()
-        g = config.get("global", {})
         config_summary = {
             "target": cli_overrides.get("target") or g.get("target_shifts_per_person", 3),
             "min": cli_overrides.get("min") or g.get("min_shifts_per_person", 1),
             "max": cli_overrides.get("max") or g.get("max_shifts_per_person", 5),
             "alpha": effective_alpha,
+            "pass2_min": effective_pass2_min,
+            "pass2_max": effective_pass2_max,
             "n_shifts": len(shifts),
             "n_people": len(people),
         }

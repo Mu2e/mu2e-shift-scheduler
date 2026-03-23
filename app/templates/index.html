@@ -93,16 +93,38 @@
         </div>
         <div class="collapse" id="advancedPanel">
           <div class="card-body">
-            <div class="col-md-4">
-              <label class="form-label" for="alpha">
-                Load-balancing weight (&alpha;)
-              </label>
-              <input class="form-control" type="number" id="alpha" name="alpha"
-                     value="{{ defaults.alpha }}" min="0" step="0.1">
-              <div class="form-text">
-                Higher &alpha; → prioritize equitable shift counts.<br>
-                Lower &alpha; → prioritize personal preferences.
+            <div class="row g-3">
+
+              <div class="col-md-4">
+                <label class="form-label" for="alpha">
+                  Load-balancing weight (&alpha;)
+                </label>
+                <input class="form-control" type="number" id="alpha" name="alpha"
+                       value="{{ defaults.alpha }}" min="0" step="0.1">
+                <div class="form-text">
+                  Higher &alpha; → prioritize equitable shift counts.<br>
+                  Lower &alpha; → prioritize personal preferences.
+                </div>
               </div>
+
+              <div class="col-md-4">
+                <label class="form-label" for="pass2_min">
+                  Pass 2 minimum shifts / person
+                </label>
+                <input class="form-control" type="number" id="pass2_min" name="pass2_min"
+                       value="{{ defaults.pass2_min }}" min="0" max="9999">
+                <div class="form-text">Hard lower bound for the second solve pass.</div>
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label" for="pass2_max">
+                  Pass 2 maximum shifts / person
+                </label>
+                <input class="form-control" type="number" id="pass2_max" name="pass2_max"
+                       value="{{ defaults.pass2_max }}" min="1" max="9999">
+                <div class="form-text">Hard upper bound for the second solve pass.</div>
+              </div>
+
             </div>
           </div>
         </div>

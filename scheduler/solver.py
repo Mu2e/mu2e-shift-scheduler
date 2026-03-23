@@ -175,11 +175,13 @@ def solve_two_pass(
     people: list,
     constraints: dict,
     alpha: float = 1.0,
+    pass2_min: int = 0,
+    pass2_max: int = 1000,
 ) -> tuple:
     """
     Two-pass solver: first pass uses the given constraints; second pass
     re-solves only the shifts not filled by a preferred person, using
-    relaxed per-person constraints (min=0, max=1000).
+    per-person constraints of pass2_min / pass2_max.
 
     Returns:
         (merged, pass2_results) where:
@@ -199,9 +201,9 @@ def solve_two_pass(
     shift_map = {s.shift_id: s for s in shifts}
     subset_shifts = [shift_map[sid] for sid in unfilled_ids]
 
-    # Relaxed constraints: everyone can take 0–1000 shifts; target unchanged
+    # Pass-2 constraints: configurable min/max, target unchanged
     relaxed = {
-        pn: {"min": 0, "max": 1000, "target": constraints[pn]["target"]}
+        pn: {"min": pass2_min, "max": pass2_max, "target": constraints[pn]["target"]}
         for pn in constraints
     }
 
