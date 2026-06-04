@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Calendar - Mu2e Shift Scheduler{% endblock %}
+
+{% block head %}
+<style>
+  .calendar-controls {
+    max-width: 720px;
+  }
+  .calendar-month {
+    margin-bottom: 2rem;
+  }
+  .calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    border: 1px solid #dee2e6;
+    border-bottom: 0;
+    border-right: 0;
+    background: #fff;
+  }
+  .calendar-header,
+  .calendar-day {
+    border-right: 1px solid #dee2e6;
+    border-bottom: 1px solid #dee2e6;
+  }
+  .calendar-header {
+    padding: .55rem .5rem;
+    background: #343a40;
+    color: #fff;
+    font-size: .82rem;
+    font-weight: 600;
+    text-align: center;
+  }
+  .calendar-day {
+    min-height: 150px;
+    padding: .45rem;
+    background: #fff;
+  }
+  .calendar-day.out-of-month {
+    background: #f1f3f5;
+  }
+  .calendar-date {
+    color: #6c757d;
+    font-size: .78rem;
+    font-weight: 700;
+    margin-bottom: .35rem;
+  }
+  .assignment-card {
+    border-left: 4px solid #198754;
+    background: #f8f9fa;
+    border-radius: 4px;
+    padding: .35rem .4rem;
+    margin-bottom: .35rem;
+    font-size: .78rem;
+    line-height: 1.25;
+  }
+  .assignment-card.unassigned {
+    border-left-color: #dc3545;
+    background: #fff5f5;
+  }
+  .assignment-card.not-preferred {
+    border-left-color: #6c757d;
+  }
+  .assignment-time {
+    font-weight: 700;
+    color: #212529;
+  }
+  .assignment-person {
+    word-break: break-word;
+  }
+  @media (max-width: 900px) {
+    .calendar-grid {
+      min-width: 900px;
+    }
+    .calendar-scroll {
+      overflow-x: auto;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-start gap-3 mb-4 flex-wrap">
+  <div class="me-auto">
+    <h1 class="h3 mb-1">Calendar</h1>
+    <div class="text-muted small">Saved result files are loaded from <code>{{ data_dir }}</code>.</div>
+  </div>
+  <a href="{{ url_for('main.results') }}" class="btn btn-outline-secondary">Current Results</a>
+</div>
+
+<form method="get" action="{{ url_for('main.calendar_view') }}" class="calendar-controls mb-4">
+  <label for="file" class="form-label fw-semibold">Results file</label>
+  <div class="input-group">
+    <select name="file" id="file" class="form-select">
+      {% for file in result_files %}
+      <option value="{{ file.name }}" {{ 'selected' if file.name == selected_name else '' }}>
+        {{ file.name }} - {{ file.n_shifts }} shifts - modified {{ file.modified }}
+      </option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">Load</button>
+  </div>
+</form>
+
+{% if not result_files %}
+<div class="alert alert-info">
+  No saved result files are available yet. Run the scheduler, then use Save Results on the results page.
+</div>
+{% elif not months %}
+<div class="alert alert-warning">
+  The selected results file does not contain shift dates in YYYY-MM-DD format.
+</div>
+{% else %}
+  {% if config_summary %}
+  <p class="text-muted small mb-4">
+    {{ assignments | length }} shifts
+    {% if config_summary.n_people %}&nbsp;&bull;&nbsp;{{ config_summary.n_people }} people{% endif %}
+    {% if config_summary.alpha is defined %}&nbsp;&bull;&nbsp;&alpha;: <strong>{{ config_summary.alpha }}</strong>{% endif %}
+  </p>
+  {% endif %}
+
+  {% for month in months %}
+  <section class="calendar-month">
+    <h2 class="h4 mb-3">{{ month.label }}</h2>
+    <div class="calendar-scroll">
+      <div class="calendar-grid">
+        {% for label in ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] %}
+        <div class="calendar-header">{{ label }}</div>
+        {% endfor %}
+
+        {% for week in month.weeks %}
+          {% for day in week %}
+          <div class="calendar-day {{ '' if day.in_month else 'out-of-month' }}">
+            <div class="calendar-date">{{ day.date.day }}</div>
+            {% for a in day.shifts %}
+            <div class="assignment-card {{ 'unassigned' if a.person == 'UNASSIGNED' else ('not-preferred' if not a.is_preferred else '') }}">
+              <div class="assignment-time">{{ a.start_time }}-{{ a.end_time }}</div>
+              <div><code>{{ a.shift_id }}</code></div>
+              <div class="assignment-person">
+                {% if a.person == 'UNASSIGNED' %}
+                <span class="text-danger fw-semibold">UNASSIGNED</span>
+                {% else %}
+                {{ a.person }}
+                {% endif %}
+              </div>
+              {% if a.institution %}
+              <div class="text-muted">{{ a.institution }}</div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% endfor %}
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+  {% endfor %}
+{% endif %}
+{% endblock %}

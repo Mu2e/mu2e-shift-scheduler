@@ -9,6 +9,7 @@ data:
   MAX_CONTENT_LENGTH: {{ .Values.flask.maxContentLength | quote }}
   PREFERRED_URL_SCHEME: {{ .Values.flask.preferredUrlScheme | quote }}
   SCHEDULER_CONFIG: {{ .Values.scheduler.configPath | quote }}
+  DATA_DIR: {{ .Values.data.dir | quote }}
   CSV_DIR: {{ .Values.preferences.csvDir | quote }}
   PREFERENCES_SHIFTS_CSV: {{ .Values.preferences.shiftsCsv | quote }}
   PREFERENCES_JSON: {{ .Values.preferences.jsonPath | quote }}

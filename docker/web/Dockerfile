@@ -10,6 +10,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     FLASK_ENV=production \
     PREFERRED_URL_SCHEME=https \
     SCHEDULER_CONFIG=/app/config.yaml \
+    DATA_DIR=/app/data \
     CSV_DIR=/app/csv \
     PREFERENCES_SHIFTS_CSV=/app/csv/shifts.csv \
     PREFERENCES_JSON=/app/data/preferences.json \

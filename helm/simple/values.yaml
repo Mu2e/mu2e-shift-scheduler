@@ -42,6 +42,9 @@ preferences:
   shiftsCsv: /app/csv/shifts.csv
   jsonPath: /app/data/preferences.json
 
+data:
+  dir: /app/data
+
 auth:
   dbPath: /app/data/users.sqlite
   sessionCookieSecure: "1"

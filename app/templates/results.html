@@ -89,6 +89,12 @@
   <a href="/download/json" class="btn btn-info text-white">
     &#11123; Download JSON
   </a>
+  <form method="post" action="{{ url_for('main.save_results') }}" id="saveResultsForm" class="m-0">
+    <input type="hidden" name="filename" id="saveResultsFilename">
+    <button type="button" class="btn btn-primary" id="saveResultsButton">
+      Save Results
+    </button>
+  </form>
   {% if has_pass2 %}
   <a href="{{ url_for('main.results_pass2') }}" class="btn btn-warning">
     Pass 2 Results
@@ -232,6 +238,15 @@
 
 {% block scripts %}
 <script>
+// ── Save current results ──────────────────────────────────────────────────
+document.getElementById("saveResultsButton").addEventListener("click", function () {
+  const defaultName = "shift-assignments-" + new Date().toISOString().slice(0, 10) + ".json";
+  const filename = window.prompt("File name for saved results:", defaultName);
+  if (!filename) return;
+  document.getElementById("saveResultsFilename").value = filename;
+  document.getElementById("saveResultsForm").submit();
+});
+
 // ── Table filter ──────────────────────────────────────────────────────────
 document.getElementById("tableFilter").addEventListener("input", function () {
   const q = this.value.toLowerCase();

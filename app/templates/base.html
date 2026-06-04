@@ -33,6 +33,7 @@
       <a href="{{ url_for('auth.users') }}" class="btn btn-outline-light btn-sm">Users</a>
       {% endif %}
       <a href="{{ url_for('main.index') }}" class="btn btn-outline-light btn-sm">Scheduler</a>
+      <a href="{{ url_for('main.calendar_view') }}" class="btn btn-outline-light btn-sm">Calendar</a>
       {% if session.get('results_path') %}
       <a href="/results" class="btn btn-warning btn-sm">View Results</a>
       {% endif %}

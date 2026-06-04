@@ -67,6 +67,7 @@ echo ""
 exec docker run --rm \
     -p "${PORT}:8000" \
     -e FLASK_SECRET_KEY=local-test-secret \
+    -e DATA_DIR=/app/data \
     -e AUTH_DB_PATH=/app/data/users.sqlite \
     -e MU2E_INITIAL_ADMIN_USERNAME=mu2e-admin \
     -e MU2E_INITIAL_ADMIN_EMAIL=mu2e-admin@fnal.gov \

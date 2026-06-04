@@ -5,6 +5,8 @@ import io
 import json
 import os
 import tempfile
+import calendar as py_calendar
+from datetime import datetime
 from pathlib import Path
 
 from flask import (
@@ -18,6 +20,7 @@ from flask import (
     session,
     url_for,
 )
+from flask_login import current_user
 from werkzeug.utils import secure_filename
 
 from app.auth import admin_required
@@ -48,17 +51,25 @@ def _save_session_data(results: list, constraints: dict, config_summary: dict, p
 
 def _load_session_data():
     """Load persisted solver results from temp file stored in session."""
-    path = session.get("results_path")
-    if not path or not Path(path).exists():
+    payload = _load_session_payload()
+    if payload is None:
         return None, None, None, None
-    with open(path, encoding="utf-8") as f:
-        payload = json.load(f)
     return (
         payload["results"],
         payload["constraints"],
         payload.get("config_summary", {}),
         payload.get("pass2_results", []),
     )
+
+
+def _load_session_payload() -> dict | None:
+    """Load the complete persisted solver payload from the current session."""
+    path = session.get("results_path")
+    if not path or not Path(path).exists():
+        return None
+    with open(path, encoding="utf-8") as f:
+        payload = json.load(f)
+    return payload
 
 
 def _cleanup_old_results() -> None:
@@ -84,6 +95,21 @@ def _csv_dir() -> Path:
     return Path(current_app.config.get("CSV_DIR", "csv"))
 
 
+def _data_dir() -> Path:
+    return Path(current_app.config.get("DATA_DIR", "data"))
+
+
+def _result_file_path(filename: str) -> Path:
+    safe_name = secure_filename(filename.strip())
+    if not safe_name:
+        raise ValueError("Enter a file name.")
+    if not safe_name.lower().endswith(".json"):
+        safe_name = f"{safe_name}.json"
+    if safe_name in {"users.sqlite", "preferences.json"}:
+        raise ValueError("Choose a different result file name.")
+    return _data_dir() / safe_name
+
+
 def _preferences_shifts_path() -> Path:
     configured = current_app.config.get("PREFERENCES_SHIFTS_CSV")
     if configured:
@@ -104,6 +130,81 @@ def _list_csv_files(csv_dir: Path) -> list[dict]:
                 "is_preferences": path.resolve() == _preferences_shifts_path().resolve(),
             })
     return files
+
+
+def _load_saved_result_file(path: Path) -> dict | None:
+    try:
+        with path.open(encoding="utf-8") as f:
+            payload = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
+        return None
+    payload.setdefault("constraints", {})
+    payload.setdefault("config_summary", {})
+    payload.setdefault("pass2_results", [])
+    return payload
+
+
+def _list_result_files() -> list[dict]:
+    data_dir = _data_dir()
+    if not data_dir.exists():
+        return []
+    files = []
+    for path in sorted(data_dir.glob("*.json"), key=lambda p: p.name.lower()):
+        if path.name == "preferences.json" or not path.is_file():
+            continue
+        payload = _load_saved_result_file(path)
+        if payload is None:
+            continue
+        files.append({
+            "name": path.name,
+            "size": path.stat().st_size,
+            "n_shifts": len(payload.get("results", [])),
+            "modified": datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+        })
+    return files
+
+
+def _calendar_months(assignments: list[dict]) -> list[dict]:
+    by_date: dict[str, list[dict]] = {}
+    parsed_dates = []
+    for assignment in assignments:
+        date_text = str(assignment.get("date", "")).strip()
+        try:
+            day = datetime.strptime(date_text, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        parsed_dates.append(day)
+        by_date.setdefault(date_text, []).append(assignment)
+
+    if not parsed_dates:
+        return []
+
+    months = []
+    year_months = sorted({(day.year, day.month) for day in parsed_dates})
+    for year, month in year_months:
+        weeks = []
+        for week in py_calendar.Calendar(firstweekday=6).monthdatescalendar(year, month):
+            days = []
+            for day in week:
+                date_text = day.isoformat()
+                shifts = sorted(
+                    by_date.get(date_text, []),
+                    key=lambda item: (str(item.get("start_time", "")), str(item.get("shift_id", ""))),
+                )
+                days.append({
+                    "date": day,
+                    "date_text": date_text,
+                    "in_month": day.month == month,
+                    "shifts": shifts,
+                })
+            weeks.append(days)
+        months.append({
+            "label": datetime(year, month, 1).strftime("%B %Y"),
+            "weeks": weeks,
+        })
+    return months
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +385,31 @@ def results():
     )
 
 
+@bp.route("/results/save", methods=["POST"])
+def save_results():
+    payload = _load_session_payload()
+    if payload is None:
+        flash("No results to save. Please run the scheduler first.", "warning")
+        return redirect(url_for("main.index"))
+
+    filename = request.form.get("filename", "")
+    try:
+        target_path = _result_file_path(filename)
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("main.results"))
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = dict(payload)
+    payload["saved_by"] = getattr(current_user, "email", "")
+    payload["saved_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    with target_path.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+    flash(f"Saved results to {target_path.name}.", "success")
+    return redirect(url_for("main.calendar_view", file=target_path.name))
+
+
 @bp.route("/results/pass2")
 def results_pass2():
     data, constraints, config_summary, pass2_results = _load_session_data()
@@ -300,6 +426,42 @@ def results_pass2():
         assignments=pass2_results,
         stats=stats,
         config_summary=config_summary,
+    )
+
+
+@bp.route("/calendar")
+def calendar_view():
+    result_files = _list_result_files()
+    selected_name = request.args.get("file", "").strip()
+    if not selected_name and result_files:
+        selected_name = result_files[0]["name"]
+
+    payload = None
+    assignments = []
+    months = []
+    if selected_name:
+        try:
+            selected_path = _result_file_path(selected_name)
+        except ValueError as exc:
+            flash(str(exc), "danger")
+            selected_name = ""
+        else:
+            payload = _load_saved_result_file(selected_path)
+            if payload is None:
+                flash(f"Could not load saved results file {selected_name}.", "danger")
+                selected_name = ""
+            else:
+                assignments = payload["results"]
+                months = _calendar_months(assignments)
+
+    return render_template(
+        "calendar.html",
+        result_files=result_files,
+        selected_name=selected_name,
+        assignments=assignments,
+        months=months,
+        config_summary=(payload or {}).get("config_summary", {}),
+        data_dir=_data_dir(),
     )
 
 

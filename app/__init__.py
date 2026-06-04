@@ -49,6 +49,7 @@ def create_app(
         if app.config["PREFERENCES_SHIFTS_CSV"]
         else "csv",
     )
+    app.config["DATA_DIR"] = os.environ.get("DATA_DIR", "data")
     app.config["AUTH_DB_PATH"] = os.environ.get("AUTH_DB_PATH", "data/users.sqlite")
     app.config["OIDC_PROVIDER_URL"] = os.environ.get("OIDC_PROVIDER_URL", "").strip()
     app.config["OIDC_CLIENT_ID"] = os.environ.get("OIDC_CLIENT_ID", "").strip()
