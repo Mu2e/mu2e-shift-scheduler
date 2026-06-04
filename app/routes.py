@@ -18,7 +18,9 @@ from flask import (
     session,
     url_for,
 )
+from werkzeug.utils import secure_filename
 
+from app.auth import admin_required
 from scheduler.exporter import as_csv_string, as_json_string, compute_stats, compute_institution_stats
 from scheduler.loader import build_constraints, load_config, load_people, load_shifts, validate
 from scheduler.solver import InfeasibleError, solve_two_pass as solve
@@ -78,6 +80,32 @@ def _get_float(key: str):
     return float(v) if v else None
 
 
+def _csv_dir() -> Path:
+    return Path(current_app.config.get("CSV_DIR", "csv"))
+
+
+def _preferences_shifts_path() -> Path:
+    configured = current_app.config.get("PREFERENCES_SHIFTS_CSV")
+    if configured:
+        return Path(configured)
+    return _csv_dir() / "shifts.csv"
+
+
+def _list_csv_files(csv_dir: Path) -> list[dict]:
+    if not csv_dir.exists():
+        return []
+    files = []
+    for path in sorted(csv_dir.glob("*.csv"), key=lambda p: p.name.lower()):
+        if path.is_file():
+            files.append({
+                "name": path.name,
+                "path": str(path),
+                "size": path.stat().st_size,
+                "is_preferences": path.resolve() == _preferences_shifts_path().resolve(),
+            })
+    return files
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -90,6 +118,42 @@ def welcome():
 @bp.route("/about")
 def about():
     return render_template("about.html")
+
+
+@bp.route("/configuration", methods=["GET", "POST"])
+@admin_required
+def configuration():
+    csv_dir = _csv_dir()
+    preferences_path = _preferences_shifts_path()
+
+    if request.method == "POST":
+        upload = request.files.get("csv_file")
+        if not upload or not upload.filename:
+            flash("Choose a CSV file to upload.", "danger")
+            return redirect(url_for("main.configuration"))
+
+        original_name = secure_filename(upload.filename)
+        if not original_name or not original_name.lower().endswith(".csv"):
+            flash("Only .csv files can be uploaded.", "danger")
+            return redirect(url_for("main.configuration"))
+
+        target_mode = request.form.get("target", "preferences")
+        if target_mode == "original":
+            target_path = csv_dir / original_name
+        else:
+            target_path = preferences_path
+
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        upload.save(target_path)
+        flash(f"Uploaded {original_name} to {target_path}.", "success")
+        return redirect(url_for("main.configuration"))
+
+    return render_template(
+        "configuration.html",
+        csv_dir=csv_dir,
+        preferences_path=preferences_path,
+        csv_files=_list_csv_files(csv_dir),
+    )
 
 
 @bp.route("/schedule")

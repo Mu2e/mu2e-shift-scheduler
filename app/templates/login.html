@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Login — Mu2e Shift Scheduler{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-5">
+    <h2 class="mb-1">Login</h2>
+    <p class="text-muted mb-4">Use Fermilab SSO, or administrator password login.</p>
+
+    <div class="card mb-4">
+      <div class="card-header fw-semibold">Fermilab SSO</div>
+      <div class="card-body">
+        {% if oidc_enabled %}
+        <a href="{{ url_for('auth.oidc_login', next=request.args.get('next', '')) }}" class="btn btn-primary w-100">
+          Log in with Fermilab SSO
+        </a>
+        {% else %}
+        <p class="text-muted mb-0">
+          Fermilab SSO is not configured for this deployment.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header fw-semibold">Administrator Login</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('auth.local_login', next=request.args.get('next', '')) }}">
+          <div class="mb-3">
+            <label for="email" class="form-label">Email</label>
+            <input class="form-control" type="email" id="email" name="email"
+                   autocomplete="username" required>
+          </div>
+          <div class="mb-3">
+            <label for="password" class="form-label">Password</label>
+            <input class="form-control" type="password" id="password" name="password"
+                   autocomplete="current-password" required>
+          </div>
+          <button type="submit" class="btn btn-outline-primary w-100">Log in as Admin</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

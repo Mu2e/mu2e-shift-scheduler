@@ -19,6 +19,7 @@ from flask import (
     session,
     url_for,
 )
+from flask_login import current_user
 
 from scheduler.loader import load_shifts
 
@@ -98,7 +99,10 @@ def index():
     except Exception as exc:
         flash(f"Could not load shifts: {exc}", "danger")
         shifts = []
-    return render_template("preferences/index.html", shifts=shifts)
+    default_name = ""
+    if current_user.is_authenticated:
+        default_name = getattr(current_user, "name", "") or getattr(current_user, "email", "")
+    return render_template("preferences/index.html", shifts=shifts, default_name=default_name)
 
 
 @bp.route("/submit", methods=["POST"])

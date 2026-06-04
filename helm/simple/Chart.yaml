@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mu2e-shifts-simple
+description: Simple OKD deployment for the Mu2e Shift Scheduler Flask web app
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

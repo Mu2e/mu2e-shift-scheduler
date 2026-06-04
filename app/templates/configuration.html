@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Configuration — Mu2e Shift Scheduler{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <h2 class="mb-1">Configuration</h2>
+    <p class="text-muted mb-4">
+      Manage CSV files used by preference collection and scheduler setup.
+    </p>
+
+    <div class="card mb-4">
+      <div class="card-header fw-semibold">Upload CSV</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('main.configuration') }}" enctype="multipart/form-data">
+          <div class="mb-3">
+            <label for="csv_file" class="form-label">CSV file</label>
+            <input class="form-control" type="file" id="csv_file" name="csv_file" accept=".csv" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Destination</label>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="target" id="target_preferences"
+                     value="preferences" checked>
+              <label class="form-check-label" for="target_preferences">
+                Preference shifts CSV
+                <span class="text-muted small d-block">{{ preferences_path }}</span>
+              </label>
+            </div>
+            <div class="form-check mt-2">
+              <input class="form-check-input" type="radio" name="target" id="target_original"
+                     value="original">
+              <label class="form-check-label" for="target_original">
+                Keep uploaded filename in CSV directory
+                <span class="text-muted small d-block">{{ csv_dir }}</span>
+              </label>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary">Upload CSV</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header fw-semibold">CSV Directory</div>
+      <div class="card-body">
+        <dl class="row mb-3">
+          <dt class="col-sm-4">Directory</dt>
+          <dd class="col-sm-8"><code>{{ csv_dir }}</code></dd>
+          <dt class="col-sm-4">Preference shifts path</dt>
+          <dd class="col-sm-8"><code>{{ preferences_path }}</code></dd>
+        </dl>
+
+        {% if csv_files %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>File</th>
+                <th class="text-end">Size</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for file in csv_files %}
+              <tr>
+                <td><code>{{ file.name }}</code></td>
+                <td class="text-end">{{ file.size }} bytes</td>
+                <td>
+                  {% if file.is_preferences %}
+                  <span class="badge bg-success">Preference shifts</span>
+                  {% else %}
+                  <span class="badge bg-secondary">Available</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">No CSV files have been uploaded yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

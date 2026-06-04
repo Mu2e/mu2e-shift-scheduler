@@ -1,0 +1,12 @@
+.git
+.gitignore
+.pytest_cache
+__pycache__
+*.py[cod]
+*.egg-info
+.venv
+venv
+my-values.yaml
+preferences.json
+data/preferences.json
+sample_data

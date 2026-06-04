@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mu2e-shifts-simple.labels" . | nindent 4 }}
+data:
+  MAX_CONTENT_LENGTH: {{ .Values.flask.maxContentLength | quote }}
+  PREFERRED_URL_SCHEME: {{ .Values.flask.preferredUrlScheme | quote }}
+  SCHEDULER_CONFIG: {{ .Values.scheduler.configPath | quote }}
+  CSV_DIR: {{ .Values.preferences.csvDir | quote }}
+  PREFERENCES_SHIFTS_CSV: {{ .Values.preferences.shiftsCsv | quote }}
+  PREFERENCES_JSON: {{ .Values.preferences.jsonPath | quote }}
+  AUTH_DB_PATH: {{ .Values.auth.dbPath | quote }}
+  SESSION_COOKIE_SECURE: {{ .Values.auth.sessionCookieSecure | quote }}
+  MU2E_INITIAL_ADMIN_USERNAME: {{ .Values.auth.initialAdminUsername | quote }}
+  MU2E_INITIAL_ADMIN_EMAIL: {{ .Values.auth.initialAdminEmail | quote }}
+  OIDC_PROVIDER_URL: {{ .Values.oidc.providerUrl | quote }}
+  OIDC_CLIENT_ID: {{ .Values.oidc.clientId | quote }}
+  GUNICORN_WORKERS: {{ .Values.gunicorn.workers | quote }}
+  GUNICORN_TIMEOUT: {{ .Values.gunicorn.timeout | quote }}
+  GUNICORN_LOG_LEVEL: {{ .Values.gunicorn.logLevel | quote }}

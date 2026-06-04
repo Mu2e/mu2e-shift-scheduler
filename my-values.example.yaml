@@ -1,0 +1,17 @@
+flask:
+  secretKey: "<generate-a-long-random-value>"
+
+preferences:
+  # App-relative ./csv maps to /app/csv in the container and is PVC-backed.
+  csvDir: /app/csv
+  shiftsCsv: /app/csv/shifts.csv
+
+auth:
+  initialAdminUsername: mu2e-admin
+  initialAdminEmail: mu2e-admin@fnal.gov
+  initialAdminPassword: "<set-a-local-admin-password>"
+
+oidc:
+  providerUrl: "https://<fermilab-oidc-provider>/.well-known/openid-configuration"
+  clientId: "<oidc-client-id>"
+  clientSecret: "<oidc-client-secret>"

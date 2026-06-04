@@ -1,0 +1,69 @@
+# Default values for mu2e-shifts-simple.
+# Override with: helm upgrade --install ... -f my-values.yaml
+
+image:
+  repository: docker.io/normanajn/mu2e-shift-scheduler-web
+  tag: latest
+  pullPolicy: Always
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8000
+
+route:
+  hostname: mu2e-shifts.fnal.gov
+  timeout: 1800s
+
+certManager:
+  enabled: true
+  clusterIssuer: incommon-acme
+  secretName: mu2e-shifts-tls
+  externalCertificate: true
+
+pvc:
+  data:
+    size: 1Gi
+  csv:
+    size: 1Gi
+
+flask:
+  # REQUIRED: set in my-values.yaml or with --set-string flask.secretKey=...
+  secretKey: ""
+  maxContentLength: "16777216"
+  preferredUrlScheme: https
+
+scheduler:
+  configPath: /app/config.yaml
+
+preferences:
+  csvDir: /app/csv
+  shiftsCsv: /app/csv/shifts.csv
+  jsonPath: /app/data/preferences.json
+
+auth:
+  dbPath: /app/data/users.sqlite
+  sessionCookieSecure: "1"
+  initialAdminUsername: mu2e-admin
+  initialAdminEmail: mu2e-admin@fnal.gov
+  # REQUIRED for local administrator password login.
+  initialAdminPassword: ""
+
+oidc:
+  providerUrl: ""
+  clientId: ""
+  clientSecret: ""
+
+gunicorn:
+  workers: 3
+  timeout: 1800
+  logLevel: info
+
+resources:
+  limits:
+    cpu: "2"
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi

@@ -1,0 +1,26 @@
+{{- if .Values.route.hostname }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: web
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    haproxy.router.openshift.io/timeout: {{ .Values.route.timeout | quote }}
+  labels:
+    {{- include "mu2e-shifts-simple.labels" . | nindent 4 }}
+spec:
+  host: {{ .Values.route.hostname }}
+  to:
+    kind: Service
+    name: web
+    weight: 100
+  port:
+    targetPort: 8000
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+    {{- if and .Values.certManager.externalCertificate .Values.certManager.secretName }}
+    externalCertificate:
+      name: {{ .Values.certManager.secretName }}
+    {{- end }}
+{{- end }}
