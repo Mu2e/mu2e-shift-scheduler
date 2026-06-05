@@ -119,6 +119,15 @@ def _preferences_shifts_path() -> Path:
     return _csv_dir() / "shifts.csv"
 
 
+def _schedule_file_path(filename: str) -> Path:
+    safe_name = secure_filename(filename.strip())
+    if not safe_name:
+        raise ValueError("Choose a schedule file.")
+    if not safe_name.lower().endswith(".csv"):
+        raise ValueError("Schedule files must be .csv files.")
+    return _csv_dir() / safe_name
+
+
 def _list_csv_files(csv_dir: Path) -> list[dict]:
     if not csv_dir.exists():
         return []
@@ -461,22 +470,33 @@ def results_pass2():
 @bp.route("/calendar")
 def calendar_view():
     result_files = _list_result_files()
-    schedule_path = _preferences_shifts_path()
+    csv_dir = _csv_dir()
+    schedule_files = _list_csv_files(csv_dir)
     source = request.args.get("source", "results").strip()
     selected_name = request.args.get("file", "").strip()
+    selected_schedule = request.args.get("schedule", "").strip()
     if source != "schedule" and not selected_name and result_files:
         selected_name = result_files[0]["name"]
 
     payload = None
     assignments = []
     months = []
+    schedule_path = None
     if source == "schedule":
         selected_name = ""
-        if schedule_path.exists():
+        if not selected_schedule and schedule_files:
+            preference_schedule = next((file for file in schedule_files if file["is_preferences"]), None)
+            selected_schedule = (preference_schedule or schedule_files[0])["name"]
+
+        if selected_schedule:
             try:
+                schedule_path = _schedule_file_path(selected_schedule)
+                if not schedule_path.exists():
+                    raise ValueError(f"Schedule file {selected_schedule} was not found.")
                 assignments = _load_schedule_csv(schedule_path)
             except ValueError as exc:
                 flash(f"Could not load schedule CSV: {exc}", "danger")
+                selected_schedule = ""
             else:
                 months = _calendar_months(assignments)
         else:
@@ -499,12 +519,15 @@ def calendar_view():
     return render_template(
         "calendar.html",
         result_files=result_files,
+        schedule_files=schedule_files,
+        selected_schedule=selected_schedule,
         selected_name=selected_name,
         source=source,
         assignments=assignments,
         months=months,
         config_summary=(payload or {}).get("config_summary", {}),
         data_dir=_data_dir(),
+        csv_dir=csv_dir,
         schedule_path=schedule_path,
     )
 
@@ -528,7 +551,7 @@ def upload_calendar_schedule():
             upload.save(f)
         _load_schedule_csv(Path(temp_path))
 
-        target_path = _preferences_shifts_path()
+        target_path = _schedule_file_path(original_name)
         target_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(temp_path, target_path)
     except ValueError as exc:
@@ -543,8 +566,8 @@ def upload_calendar_schedule():
         except OSError:
             pass
 
-    flash(f"Updated calendar schedule from {original_name}.", "success")
-    return redirect(url_for("main.calendar_view", source="schedule"))
+    flash(f"Uploaded schedule {original_name}.", "success")
+    return redirect(url_for("main.calendar_view", source="schedule", schedule=target_path.name))
 
 
 @bp.route("/results/by-institution")
