@@ -17,7 +17,7 @@ def _read_secret_env(name: str, file_name: str) -> str:
 
 
 def create_app(
-    config_path: str = "config.yaml",
+    config_path: str = "config/config.yaml",
     preferences_shifts_csv: Optional[str] = None,
     preferences_json: str = "preferences.json",
 ) -> Flask:

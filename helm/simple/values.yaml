@@ -35,7 +35,7 @@ flask:
   preferredUrlScheme: https
 
 scheduler:
-  configPath: /app/config.yaml
+  configPath: /app/config/config.yaml
 
 preferences:
   csvDir: /app/csv

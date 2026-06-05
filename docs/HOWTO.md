@@ -16,8 +16,8 @@ pip install -r requirements.txt
 
 ```bash
 python3 cli.py solve \
-    --shifts  sample_data/shifts_mu2e.csv \
-    --people  sample_data/people_mu2e.csv \
+    --shifts  sample_data/example-mu2e/shifts_mu2e.csv \
+    --people  sample_data/example-mu2e/people_mu2e.csv \
     --output  results.csv
 ```
 
@@ -28,8 +28,8 @@ The solver prints a summary to stdout and writes the assignments to
 
 ```bash
 python3 cli.py solve \
-    --shifts  sample_data/shifts_mu2e.csv \
-    --people  sample_data/people_mu2e.csv \
+    --shifts  sample_data/example-mu2e/shifts_mu2e.csv \
+    --people  sample_data/example-mu2e/people_mu2e.csv \
     --output  results.json
 ```
 
@@ -38,7 +38,7 @@ You can also force it with `--format csv` or `--format json`.
 
 ### Override constraints
 
-These flags override the values in `config.yaml`:
+These flags override the values in `config/config.yaml`:
 
 | Flag | Meaning |
 |---|---|
@@ -49,8 +49,8 @@ These flags override the values in `config.yaml`:
 
 ```bash
 python3 cli.py solve \
-    --shifts  sample_data/shifts_mu2e.csv \
-    --people  sample_data/people_mu2e.csv \
+    --shifts  sample_data/example-mu2e/shifts_mu2e.csv \
+    --people  sample_data/example-mu2e/people_mu2e.csv \
     --output  results.csv \
     --target 6 --min 4 --max 8 --alpha 2.0
 ```
@@ -211,9 +211,9 @@ The JSON file is a plain array; you can inspect or edit it directly:
 
 ---
 
-## 4  Configuration File (`config.yaml`)
+## 4  Configuration File (`config/config.yaml`)
 
-Edit `config.yaml` to set persistent defaults:
+Edit `config/config.yaml` to set persistent defaults:
 
 ```yaml
 global:
@@ -317,11 +317,22 @@ shift-W-002,2026-04-06,16:00,23:59,Bob Smith,False,
 # — already included in sample_data/
 
 # Large dataset (1092 shifts, 200 people, 6 slots/day)
-python3 generate_sample_data.py
+python3 scripts/generate_sample_data.py
 
 # Mu2e dataset (546 shifts, 96 people, day/evening/night)
-python3 generate_mu2e_data.py
+python3 scripts/generate_mu2e_data.py
+
+# Mu2e block dataset (156 blocks, 96 people)
+python3 scripts/generate_mu2e_blocks.py
+
+# Custom block schedule, prompted interactively
+python3 scripts/create_shift_blocks.py
 ```
+
+The custom block generator asks for the schedule name, start and stop dates,
+blocks per week, days per block, days of week for each block, shifts per day,
+and start/stop times for each shift. It writes a scheduler-compatible CSV under
+`sample_data/` unless `--output PATH` is provided.
 
 ---
 
@@ -329,14 +340,14 @@ python3 generate_mu2e_data.py
 
 ### "Infeasible: total max capacity … is less than the number of shifts"
 
-Increase `max_shifts_per_person` in `config.yaml`, add more people, or
+Increase `max_shifts_per_person` in `config/config.yaml`, add more people, or
 reduce the number of shifts.  The solver prints the exact numbers to help
 you diagnose the gap.
 
 ### "target_shifts must be between min and max"
 
 Your `target` value falls outside the `[min, max]` range.  Fix the values
-in `config.yaml` or via CLI flags so that `min ≤ target ≤ max`.
+in `config/config.yaml` or via CLI flags so that `min ≤ target ≤ max`.
 
 ### The solver takes a very long time
 

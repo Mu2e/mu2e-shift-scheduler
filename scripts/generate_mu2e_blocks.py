@@ -39,9 +39,9 @@ parser.add_argument(
 )
 parser.add_argument(
     "--profiles",
-    default="profiles_blocks.yaml",
+    default="config/profiles_blocks.yaml",
     metavar="PATH",
-    help="YAML file defining worker preference profiles (default: profiles_blocks.yaml).",
+    help="YAML file defining worker preference profiles (default: config/profiles_blocks.yaml).",
 )
 args = parser.parse_args()
 

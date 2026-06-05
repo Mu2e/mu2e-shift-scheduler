@@ -13,8 +13,8 @@ Schedule structure
 
 Outputs
 -------
-  sample_data/shifts_mu2e.csv   — 546 shifts
-  sample_data/people_mu2e.csv   — 96 people, each with ≥6 ordered preferences
+  sample_data/example-mu2e/shifts_mu2e.csv   — 546 shifts
+  sample_data/example-mu2e/people_mu2e.csv   — 96 people, each with ≥6 ordered preferences
 """
 import csv
 import random
@@ -223,8 +223,8 @@ for i, name in enumerate(names):
 # ---------------------------------------------------------------------------
 # Write CSVs
 # ---------------------------------------------------------------------------
-shifts_path = "sample_data/shifts_mu2e.csv"
-people_path = "sample_data/people_mu2e.csv"
+shifts_path = "sample_data/example-mu2e/shifts_mu2e.csv"
+people_path = "sample_data/example-mu2e/people_mu2e.csv"
 
 with open(shifts_path, "w", newline="", encoding="utf-8") as f:
     writer = csv.DictWriter(f, fieldnames=["shift_id", "date", "start_time", "end_time"])

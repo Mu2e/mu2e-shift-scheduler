@@ -146,9 +146,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--config",
-        default="config.yaml",
+        default="config/config.yaml",
         metavar="PATH",
-        help="Path to YAML config file (default: config.yaml)",
+        help="Path to YAML config file (default: config/config.yaml)",
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)

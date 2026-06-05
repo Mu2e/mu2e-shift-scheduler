@@ -82,32 +82,72 @@
 <div class="d-flex align-items-start gap-3 mb-4 flex-wrap">
   <div class="me-auto">
     <h1 class="h3 mb-1">Calendar</h1>
-    <div class="text-muted small">Saved result files are loaded from <code>{{ data_dir }}</code>.</div>
+    <div class="text-muted small">
+      Schedules are loaded from <code>{{ schedule_path }}</code>; saved result files are loaded from <code>{{ data_dir }}</code>.
+    </div>
   </div>
   <a href="{{ url_for('main.results') }}" class="btn btn-outline-secondary">Current Results</a>
 </div>
 
-<form method="get" action="{{ url_for('main.calendar_view') }}" class="calendar-controls mb-4">
-  <label for="file" class="form-label fw-semibold">Results file</label>
-  <div class="input-group">
-    <select name="file" id="file" class="form-select">
-      {% for file in result_files %}
-      <option value="{{ file.name }}" {{ 'selected' if file.name == selected_name else '' }}>
-        {{ file.name }} - {{ file.n_shifts }} shifts - modified {{ file.modified }}
-      </option>
-      {% endfor %}
-    </select>
-    <button type="submit" class="btn btn-primary">Load</button>
+{% if current_user.is_authenticated and current_user.is_admin %}
+<div class="card mb-4">
+  <div class="card-header fw-semibold">Update Schedule Calendar</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('main.upload_calendar_schedule') }}" enctype="multipart/form-data" class="row g-3 align-items-end">
+      <div class="col-md">
+        <label for="schedule_file" class="form-label">Schedule CSV</label>
+        <input class="form-control" type="file" id="schedule_file" name="schedule_file" accept=".csv" required>
+        <div class="form-text">Uploads replace <code>{{ schedule_path }}</code>.</div>
+      </div>
+      <div class="col-md-auto">
+        <button type="submit" class="btn btn-primary">Upload Schedule</button>
+      </div>
+    </form>
   </div>
-</form>
+</div>
+{% endif %}
 
-{% if not result_files %}
+<div class="calendar-controls mb-4">
+  <div class="btn-group mb-3" role="group" aria-label="Calendar source">
+    <a href="{{ url_for('main.calendar_view', source='schedule') }}"
+       class="btn {{ 'btn-primary' if source == 'schedule' else 'btn-outline-primary' }}">
+      Schedule
+    </a>
+    <a href="{{ url_for('main.calendar_view', source='results') }}"
+       class="btn {{ 'btn-primary' if source != 'schedule' else 'btn-outline-primary' }}">
+      Results
+    </a>
+  </div>
+
+  {% if source != 'schedule' %}
+  <form method="get" action="{{ url_for('main.calendar_view') }}">
+    <input type="hidden" name="source" value="results">
+    <label for="file" class="form-label fw-semibold">Results file</label>
+    <div class="input-group">
+      <select name="file" id="file" class="form-select">
+        {% for file in result_files %}
+        <option value="{{ file.name }}" {{ 'selected' if file.name == selected_name else '' }}>
+          {{ file.name }} - {{ file.n_shifts }} shifts - modified {{ file.modified }}
+        </option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-primary">Load</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+
+{% if source != 'schedule' and not result_files %}
 <div class="alert alert-info">
   No saved result files are available yet. Run the scheduler, then use Save Results on the results page.
 </div>
 {% elif not months %}
 <div class="alert alert-warning">
+  {% if source == 'schedule' %}
+  The current schedule CSV does not contain shift dates in YYYY-MM-DD format.
+  {% else %}
   The selected results file does not contain shift dates in YYYY-MM-DD format.
+  {% endif %}
 </div>
 {% else %}
   {% if config_summary %}
@@ -135,8 +175,13 @@
             <div class="assignment-card {{ 'unassigned' if a.person == 'UNASSIGNED' else ('not-preferred' if not a.is_preferred else '') }}">
               <div class="assignment-time">{{ a.start_time }}-{{ a.end_time }}</div>
               <div><code>{{ a.shift_id }}</code></div>
+              {% if a.date_end %}
+              <div class="text-muted">through {{ a.date_end }}</div>
+              {% endif %}
               <div class="assignment-person">
-                {% if a.person == 'UNASSIGNED' %}
+                {% if source == 'schedule' %}
+                {{ a.shift_type or a.block_type or 'Schedule block' }}
+                {% elif a.person == 'UNASSIGNED' %}
                 <span class="text-danger fw-semibold">UNASSIGNED</span>
                 {% else %}
                 {{ a.person }}

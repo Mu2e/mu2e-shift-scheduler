@@ -1,6 +1,7 @@
 """
 Flask routes for the Mu2e Shift Scheduler web interface.
 """
+import csv
 import io
 import json
 import os
@@ -166,6 +167,33 @@ def _list_result_files() -> list[dict]:
     return files
 
 
+def _load_schedule_csv(path: Path) -> list[dict]:
+    config = load_config(current_app.config.get("SCHEDULER_CONFIG", "config/config.yaml"))
+    load_shifts(str(path), config)
+
+    with path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        rows = []
+        for row in reader:
+            shift_id = row.get("shift_id", "").strip()
+            if not shift_id:
+                continue
+            rows.append({
+                "shift_id": shift_id,
+                "date": row.get("date", "").strip(),
+                "date_end": row.get("date_end", "").strip(),
+                "start_time": row.get("start_time", "").strip(),
+                "end_time": row.get("end_time", "").strip(),
+                "points": row.get("points", "").strip() or "",
+                "shift_type": row.get("shift_type", "").strip(),
+                "block_type": row.get("block_type", "").strip(),
+                "person": "",
+                "institution": "",
+                "is_preferred": True,
+            })
+    return rows
+
+
 def _calendar_months(assignments: list[dict]) -> list[dict]:
     by_date: dict[str, list[dict]] = {}
     parsed_dates = []
@@ -260,7 +288,7 @@ def configuration():
 @bp.route("/schedule")
 def index():
     # Pre-populate form with current config defaults if available
-    config = load_config(current_app.config.get("SCHEDULER_CONFIG", "config.yaml"))
+    config = load_config(current_app.config.get("SCHEDULER_CONFIG", "config/config.yaml"))
     g = config.get("global", {})
     defaults = {
         "target":    g.get("target_points_per_person", g.get("target_shifts_per_person", 3.0)),
@@ -306,7 +334,7 @@ def run_solve():
             people_file.save(f)
 
         # Load config
-        config = load_config(current_app.config.get("SCHEDULER_CONFIG", "config.yaml"))
+        config = load_config(current_app.config.get("SCHEDULER_CONFIG", "config/config.yaml"))
         if alpha is not None:
             config["alpha"] = alpha
 
@@ -432,14 +460,27 @@ def results_pass2():
 @bp.route("/calendar")
 def calendar_view():
     result_files = _list_result_files()
+    schedule_path = _preferences_shifts_path()
+    source = request.args.get("source", "results").strip()
     selected_name = request.args.get("file", "").strip()
-    if not selected_name and result_files:
+    if source != "schedule" and not selected_name and result_files:
         selected_name = result_files[0]["name"]
 
     payload = None
     assignments = []
     months = []
-    if selected_name:
+    if source == "schedule":
+        selected_name = ""
+        if schedule_path.exists():
+            try:
+                assignments = _load_schedule_csv(schedule_path)
+            except ValueError as exc:
+                flash(f"Could not load schedule CSV: {exc}", "danger")
+            else:
+                months = _calendar_months(assignments)
+        else:
+            flash("No schedule CSV has been uploaded yet.", "warning")
+    elif selected_name:
         try:
             selected_path = _result_file_path(selected_name)
         except ValueError as exc:
@@ -458,11 +499,50 @@ def calendar_view():
         "calendar.html",
         result_files=result_files,
         selected_name=selected_name,
+        source=source,
         assignments=assignments,
         months=months,
         config_summary=(payload or {}).get("config_summary", {}),
         data_dir=_data_dir(),
+        schedule_path=schedule_path,
     )
+
+
+@bp.route("/calendar/upload", methods=["POST"])
+@admin_required
+def upload_calendar_schedule():
+    upload = request.files.get("schedule_file")
+    if not upload or not upload.filename:
+        flash("Choose a schedule CSV file to upload.", "danger")
+        return redirect(url_for("main.calendar_view", source="schedule"))
+
+    original_name = secure_filename(upload.filename)
+    if not original_name or not original_name.lower().endswith(".csv"):
+        flash("Only .csv schedule files can be uploaded.", "danger")
+        return redirect(url_for("main.calendar_view", source="schedule"))
+
+    fd, temp_path = tempfile.mkstemp(suffix=".csv")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            upload.save(f)
+        _load_schedule_csv(Path(temp_path))
+
+        target_path = _preferences_shifts_path()
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        Path(temp_path).replace(target_path)
+    except ValueError as exc:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        flash(f"Invalid schedule CSV: {exc}", "danger")
+        return redirect(url_for("main.calendar_view", source="schedule"))
+    except OSError as exc:
+        flash(f"Could not save schedule CSV: {exc}", "danger")
+        return redirect(url_for("main.calendar_view", source="schedule"))
+
+    flash(f"Updated calendar schedule from {original_name}.", "success")
+    return redirect(url_for("main.calendar_view", source="schedule"))
 
 
 @bp.route("/results/by-institution")
