@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import os
+import shutil
 import tempfile
 import calendar as py_calendar
 from datetime import datetime
@@ -529,17 +530,18 @@ def upload_calendar_schedule():
 
         target_path = _preferences_shifts_path()
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        Path(temp_path).replace(target_path)
+        shutil.copyfile(temp_path, target_path)
     except ValueError as exc:
-        try:
-            os.unlink(temp_path)
-        except OSError:
-            pass
         flash(f"Invalid schedule CSV: {exc}", "danger")
         return redirect(url_for("main.calendar_view", source="schedule"))
     except OSError as exc:
         flash(f"Could not save schedule CSV: {exc}", "danger")
         return redirect(url_for("main.calendar_view", source="schedule"))
+    finally:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
 
     flash(f"Updated calendar schedule from {original_name}.", "success")
     return redirect(url_for("main.calendar_view", source="schedule"))
