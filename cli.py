@@ -129,6 +129,8 @@ def cmd_serve(args: argparse.Namespace) -> None:
         preferences_shifts_csv=args.preferences_shifts,
         preferences_json=args.preferences_json,
     )
+    if args.show_admin_login is not None:
+        app.config["SHOW_ADMIN_LOGIN"] = args.show_admin_login
     print(f"Starting web server at http://{args.host}:{args.port}/")
     app.run(host=args.host, port=args.port, debug=args.debug)
 
@@ -222,6 +224,22 @@ def build_parser() -> argparse.ArgumentParser:
         default="preferences.json",
         metavar="FILE",
         help="JSON file where preferences are stored (default: preferences.json).",
+    )
+    admin_login = sv.add_mutually_exclusive_group()
+    admin_login.add_argument(
+        "--show-admin-login",
+        dest="show_admin_login",
+        action="store_true",
+        default=None,
+        help="Show the administrator password form on the login page "
+             "(overrides SHOW_ADMIN_LOGIN).",
+    )
+    admin_login.add_argument(
+        "--hide-admin-login",
+        dest="show_admin_login",
+        action="store_false",
+        help="Hide the administrator password form, leaving only Fermilab SSO "
+             "(overrides SHOW_ADMIN_LOGIN; this is the default).",
     )
 
     return parser

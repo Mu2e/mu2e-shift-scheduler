@@ -5,7 +5,11 @@
 <div class="row justify-content-center">
   <div class="col-lg-5">
     <h2 class="mb-1">Login</h2>
+    {% if show_admin_login %}
     <p class="text-muted mb-4">Use Fermilab SSO, or administrator password login.</p>
+    {% else %}
+    <p class="text-muted mb-4">Use Fermilab SSO to sign in.</p>
+    {% endif %}
 
     <div class="card mb-4">
       <div class="card-header fw-semibold">Fermilab SSO</div>
@@ -22,6 +26,7 @@
       </div>
     </div>
 
+    {% if show_admin_login %}
     <div class="card">
       <div class="card-header fw-semibold">Administrator Login</div>
       <div class="card-body">
@@ -40,6 +45,7 @@
         </form>
       </div>
     </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

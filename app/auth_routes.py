@@ -1,4 +1,4 @@
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_user, logout_user
 
 from .auth import (
@@ -16,7 +16,11 @@ bp = Blueprint("auth", __name__)
 
 @bp.route("/login")
 def login():
-    return render_template("login.html", oidc_enabled=oidc_enabled())
+    return render_template(
+        "login.html",
+        oidc_enabled=oidc_enabled(),
+        show_admin_login=current_app.config.get("SHOW_ADMIN_LOGIN", False),
+    )
 
 
 @bp.route("/login/local", methods=["POST"])

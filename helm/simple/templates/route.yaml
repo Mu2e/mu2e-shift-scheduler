@@ -8,6 +8,9 @@ metadata:
     haproxy.router.openshift.io/timeout: {{ .Values.route.timeout | quote }}
   labels:
     {{- include "mu2e-shifts-simple.labels" . | nindent 4 }}
+    {{- with .Values.route.ingressController }}
+    ingresscontroller: {{ . | quote }}
+    {{- end }}
 spec:
   host: {{ .Values.route.hostname }}
   to:

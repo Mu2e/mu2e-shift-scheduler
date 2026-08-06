@@ -15,6 +15,7 @@ data:
   PREFERENCES_JSON: {{ .Values.preferences.jsonPath | quote }}
   AUTH_DB_PATH: {{ .Values.auth.dbPath | quote }}
   SESSION_COOKIE_SECURE: {{ .Values.auth.sessionCookieSecure | quote }}
+  SHOW_ADMIN_LOGIN: {{ .Values.auth.showAdminLogin | quote }}
   MU2E_INITIAL_ADMIN_USERNAME: {{ .Values.auth.initialAdminUsername | quote }}
   MU2E_INITIAL_ADMIN_EMAIL: {{ .Values.auth.initialAdminEmail | quote }}
   OIDC_PROVIDER_URL: {{ .Values.oidc.providerUrl | quote }}

@@ -58,6 +58,7 @@ def create_app(
         "OIDC_CLIENT_SECRET_FILE",
     )
     app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE", "0") == "1"
+    app.config["SHOW_ADMIN_LOGIN"] = os.environ.get("SHOW_ADMIN_LOGIN", "0") == "1"
 
     from .routes import bp
     app.register_blueprint(bp)

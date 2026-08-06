@@ -15,6 +15,9 @@ service:
 route:
   hostname: mu2e-shifts.fnal.gov
   timeout: 1800s
+  # Route shard label matched by the OKD IngressController routeSelector.
+  # Set to "" to leave the route unlabeled (default router shard).
+  ingressController: public-proxy
 
 certManager:
   enabled: true
@@ -48,6 +51,9 @@ data:
 auth:
   dbPath: /app/data/users.sqlite
   sessionCookieSecure: "1"
+  # Show the "Administrator Login" password form on the login page.
+  # "0" hides it, leaving Fermilab SSO as the only advertised login.
+  showAdminLogin: "0"
   initialAdminUsername: mu2e-admin
   initialAdminEmail: mu2e-admin@fnal.gov
   # REQUIRED for local administrator password login.
