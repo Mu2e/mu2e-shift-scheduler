@@ -8,5 +8,6 @@ venv/
 *.csv
 !sample_data/**/*.csv
 my-values.yaml
+my-values-test.yaml
 preferences.json
 data/

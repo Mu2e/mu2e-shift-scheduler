@@ -35,6 +35,7 @@ by the `{{ release }}-csv` PVC. Place the production shifts CSV at
 
 The SQLite user database lives at `/app/data/users.sqlite` on the data PVC.
 Register `https://mu2e-shifts.fnal.gov/oidc/callback` as the OIDC redirect URI.
+The test instance needs `https://mu2e-okd-test.fnal.gov/oidc/callback` registered too.
 
 The "Administrator Login" password form on `/login` is hidden by default
 (`auth.showAdminLogin: "0"`), leaving Fermilab SSO as the only advertised login.
@@ -55,3 +56,23 @@ helm upgrade --install mu2e-shifts ./helm/simple \
   --namespace mu2e-shifts \
   --values my-values.yaml
 ```
+
+## Multiple instances
+
+Every template namespaces itself with `{{ .Release.Namespace }}` and names its
+resources from `{{ .Release.Name }}`, so the chart supports parallel instances
+with no template changes — only the release name, namespace, route hostname, and
+cert-manager secret name need to differ.
+
+`values-test.yaml` holds the non-secret overrides for the `mu2e-test` instance:
+
+```sh
+helm upgrade --install mu2e-test ./helm/simple \
+  --namespace mu2e-test \
+  --values values-test.yaml \
+  --values my-values-test.yaml
+```
+
+Each instance needs a distinct `route.hostname`: OKD grants a duplicated host to
+the oldest Route and rejects the newer one with `HostAlreadyClaimed`. See
+`docs/OKD-Deployment.md` for the full test-instance procedure.
