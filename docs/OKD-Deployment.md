@@ -300,5 +300,23 @@ as production-sensitive afterward.
 
 ```sh
 helm uninstall mu2e-test --namespace mu2e-test
-oc delete pvc mu2e-test-data mu2e-test-csv -n mu2e-test   # PVCs survive uninstall
 ```
+
+That also deletes `mu2e-test-data` and `mu2e-test-csv`: both PVCs are
+Helm-managed with no `helm.sh/resource-policy: keep`, so the uploaded CSVs and
+`users.sqlite` go with the release. Back them up first if they matter:
+
+```sh
+POD=$(oc get pod -n mu2e-test -l app.kubernetes.io/component=web -o name | head -1)
+oc rsync -n mu2e-test "${POD#pod/}:/app/data/" ./backup-data/
+oc rsync -n mu2e-test "${POD#pod/}:/app/csv/"  ./backup-csv/
+```
+
+### Sharing mu2e-test with mu2e-talks
+
+`mu2e-test` is also the test namespace for the **mu2e-talks** project, whose
+chart names its Deployment, Service, and Route `web` too. Only one of the two
+apps can occupy the namespace at a time — Helm will not install over the other,
+and the Deployment's label selector is immutable. Check who holds the slot with
+`helm list -n mu2e-test`, and uninstall the incumbent (losing its data, per
+above) before deploying the other.
