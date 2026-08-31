@@ -7,31 +7,13 @@ included so the block structure is readable to humans and downstream tools.
 """
 import argparse
 import csv
-import re
+import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-WEEKDAYS = {
-    "mon": 0,
-    "monday": 0,
-    "tue": 1,
-    "tues": 1,
-    "tuesday": 1,
-    "wed": 2,
-    "wednesday": 2,
-    "thu": 3,
-    "thur": 3,
-    "thurs": 3,
-    "thursday": 3,
-    "fri": 4,
-    "friday": 4,
-    "sat": 5,
-    "saturday": 5,
-    "sun": 6,
-    "sunday": 6,
-}
-WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+from scheduler.blocks import WEEKDAYS, WEEKDAY_NAMES, slugify, week_start  # noqa: E402
 
 
 def prompt_text(label: str, default: str | None = None) -> str:
@@ -99,15 +81,6 @@ def prompt_weekdays(label: str, expected_count: int) -> list[int]:
             print(f"Enter exactly {expected_count} distinct day(s).")
             continue
         return days
-
-
-def slugify(value: str) -> str:
-    slug = re.sub(r"[^A-Za-z0-9]+", "-", value.strip()).strip("-").lower()
-    return slug or "schedule"
-
-
-def week_start(day: date) -> date:
-    return day - timedelta(days=day.weekday())
 
 
 def build_rows(
