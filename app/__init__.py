@@ -51,6 +51,10 @@ def create_app(
     )
     app.config["DATA_DIR"] = os.environ.get("DATA_DIR", "data")
     app.config["AUTH_DB_PATH"] = os.environ.get("AUTH_DB_PATH", "data/users.sqlite")
+    app.config["APP_DB_PATH"] = os.environ.get(
+        "APP_DB_PATH",
+        str(Path(app.config["DATA_DIR"]) / "app.sqlite"),
+    )
     app.config["OIDC_PROVIDER_URL"] = os.environ.get("OIDC_PROVIDER_URL", "").strip()
     app.config["OIDC_CLIENT_ID"] = os.environ.get("OIDC_CLIENT_ID", "").strip()
     app.config["OIDC_CLIENT_SECRET"] = _read_secret_env(
@@ -72,5 +76,8 @@ def create_app(
     init_auth_db(app)
     seed_admin(app)
     init_login(app)
+
+    from .store import init_app_db
+    init_app_db(app)
 
     return app
