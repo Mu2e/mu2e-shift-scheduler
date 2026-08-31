@@ -17,8 +17,11 @@ from flask_login import current_user
 
 from app import store
 from app.auth import admin_required
+import re
+
 from scheduler.blocks import (
     REPETITIONS,
+    BlockSpec,
     ShiftSpec,
     generate_schedule_rows,
     rows_to_block_csv_string,
@@ -64,38 +67,58 @@ def _parse_shift_setup_form(form):
     if end_date < start_date:
         raise ValueError("Stop date must be on or after the start date.")
 
-    try:
-        length_days = int(form.get("shift_length_days", "1").strip() or "1")
-    except ValueError:
-        raise ValueError("Shift length must be a whole number of days.")
-    if length_days < 1:
-        raise ValueError("Shift length must be at least 1 day.")
-
     repetition = form.get("repeat", "week").strip()
     if repetition not in REPETITIONS:
         raise ValueError("Choose a valid repetition rate.")
 
-    weekdays = []
-    for value in form.getlist("weekdays[]"):
-        try:
-            day = int(value)
-        except ValueError:
-            continue
-        if 0 <= day <= 6 and day not in weekdays:
-            weekdays.append(day)
-    # Weekday checkboxes describe a within-week block; they conflict with
-    # daily repetition (each day would regenerate the same week block).
-    if repetition == "day":
+    # Blocks use indexed field names (block_name_0, block_length_0,
+    # block_days_0[]) because each row carries its own checkbox group.
+    block_indices = sorted({
+        int(match.group(1))
+        for key in form
+        for match in [re.fullmatch(r"block_name_(\d+)", key)]
+        if match
+    })
+    blocks = []
+    for i in block_indices:
+        block_name = form.get(f"block_name_{i}", "").strip()
+        length_raw = form.get(f"block_length_{i}", "").strip()
         weekdays = []
-    if length_days > 1 and repetition != "day" and not weekdays:
-        raise ValueError("Select the days of the week covered by a multi-day shift.")
+        for value in form.getlist(f"block_days_{i}[]"):
+            try:
+                day = int(value)
+            except ValueError:
+                continue
+            if 0 <= day <= 6 and day not in weekdays:
+                weekdays.append(day)
+        if not block_name and not weekdays and not length_raw:
+            continue  # blank filler row
+        if not block_name:
+            raise ValueError(f"Block {len(blocks) + 1}: enter a block name.")
+        try:
+            length_days = int(length_raw or "1")
+        except ValueError:
+            raise ValueError(f"Block '{block_name}': length must be a whole number of days.")
+        if length_days < 1:
+            raise ValueError(f"Block '{block_name}': length must be at least 1 day.")
+        if weekdays and length_days != len(weekdays):
+            # Checked weekdays define the block; keep the length consistent.
+            length_days = len(weekdays)
+        blocks.append(BlockSpec(name=block_name, length_days=length_days,
+                                weekdays=sorted(weekdays)))
+    if not blocks:
+        raise ValueError("Define at least one block (name and days).")
+    if repetition == "day" and any(b.weekdays for b in blocks):
+        raise ValueError(
+            "Weekday selections require weekly, 2-week, or monthly repetition."
+        )
 
     names = form.getlist("shift_name[]")
     starts = form.getlist("shift_start[]")
     ends = form.getlist("shift_end[]")
     weights = form.getlist("shift_weight[]")
 
-    specs = []
+    shifts = []
     for index, shift_name in enumerate(names):
         shift_name = (shift_name or "").strip()
         start_time = (starts[index] if index < len(starts) else "").strip()
@@ -115,19 +138,16 @@ def _parse_shift_setup_form(form):
                 raise ValueError(f"Shift '{shift_name}': weight must be a number.")
             if weight < 0:
                 raise ValueError(f"Shift '{shift_name}': weight cannot be negative.")
-        specs.append(ShiftSpec(
+        shifts.append(ShiftSpec(
             name=shift_name,
             start_time=start_time,
             end_time=end_time,
-            length_days=length_days,
-            repetition=repetition,
-            weekdays=list(weekdays),
             weight=weight,
         ))
 
-    if not specs:
+    if not shifts:
         raise ValueError("Define at least one shift (name, start time, stop time).")
-    return name, classification_id, start_date, end_date, specs
+    return name, classification_id, start_date, end_date, blocks, shifts, repetition
 
 
 def _write_backing_csv(schedule_name: str, rows: list[dict]) -> str:
@@ -156,8 +176,11 @@ def shift_setup():
 @admin_required
 def shift_setup_generate():
     try:
-        name, classification_id, start_date, end_date, specs = _parse_shift_setup_form(request.form)
-        rows, skipped = generate_schedule_rows(name, start_date, end_date, specs)
+        (name, classification_id, start_date, end_date,
+         blocks, shifts, repetition) = _parse_shift_setup_form(request.form)
+        rows, skipped = generate_schedule_rows(
+            name, start_date, end_date, blocks, shifts, repetition
+        )
         if not rows:
             raise ValueError(
                 "No complete shift occurrences fit inside the date range. "
