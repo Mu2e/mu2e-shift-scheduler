@@ -14,6 +14,7 @@ data:
   PREFERENCES_SHIFTS_CSV: {{ .Values.preferences.shiftsCsv | quote }}
   PREFERENCES_JSON: {{ .Values.preferences.jsonPath | quote }}
   AUTH_DB_PATH: {{ .Values.auth.dbPath | quote }}
+  APP_DB_PATH: {{ .Values.data.appDbPath | default (printf "%s/app.sqlite" .Values.data.dir) | quote }}
   SESSION_COOKIE_SECURE: {{ .Values.auth.sessionCookieSecure | quote }}
   SHOW_ADMIN_LOGIN: {{ .Values.auth.showAdminLogin | quote }}
   MU2E_INITIAL_ADMIN_USERNAME: {{ .Values.auth.initialAdminUsername | quote }}
