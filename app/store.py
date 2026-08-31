@@ -448,6 +448,9 @@ def schedule_to_shift_objects(schedule_id: int, config: dict) -> list:
 # ---------------------------------------------------------------------------
 
 def save_assignments(schedule_id: int, results: list[dict], saved_by: str) -> None:
+    # Assignment rows may carry email/phone from the people CSV; record them so
+    # calendar contact links keep working after the in-session results expire.
+    bulk_upsert_contacts(results)
     now = _utcnow()
     with connect() as conn:
         conn.executemany(

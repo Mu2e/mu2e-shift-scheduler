@@ -7,7 +7,6 @@ import json
 import os
 import shutil
 import tempfile
-import calendar as py_calendar
 from datetime import datetime
 from pathlib import Path
 
@@ -25,7 +24,9 @@ from flask import (
 from flask_login import current_user
 from werkzeug.utils import secure_filename
 
+from app import store
 from app.auth import admin_required
+from scheduler.blocks import rows_to_block_csv_string
 from scheduler.exporter import as_csv_string, as_json_string, compute_stats, compute_institution_stats
 from scheduler.loader import build_constraints, load_config, load_people, load_shifts, validate
 from scheduler.solver import InfeasibleError, solve_two_pass as solve
@@ -37,13 +38,15 @@ bp = Blueprint("main", __name__)
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _save_session_data(results: list, constraints: dict, config_summary: dict, pass2_results: list = None) -> str:
+def _save_session_data(results: list, constraints: dict, config_summary: dict,
+                       pass2_results: list = None, schedule_id: int = None) -> str:
     """Persist solver results to a temp file; return its path."""
     payload = {
         "results": results,
         "constraints": constraints,
         "config_summary": config_summary,
         "pass2_results": pass2_results or [],
+        "schedule_id": schedule_id,
     }
     fd, path = tempfile.mkstemp(suffix=".json", prefix="mu2e_sched_")
     with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -204,45 +207,374 @@ def _load_schedule_csv(path: Path) -> list[dict]:
     return rows
 
 
-def _calendar_months(assignments: list[dict]) -> list[dict]:
-    by_date: dict[str, list[dict]] = {}
-    parsed_dates = []
-    for assignment in assignments:
-        date_text = str(assignment.get("date", "")).strip()
+def _parse_anchor_date(raw: str):
+    try:
+        return datetime.strptime((raw or "").strip(), "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _default_anchor(entries: dict):
+    """Anchor for views without an explicit date: today, unless the loaded
+    schedule has no entries this month — then the nearest month that does."""
+    from datetime import date as date_cls
+
+    today = date_cls.today()
+    if not entries:
+        return today
+    entry_dates = sorted(
+        d for d in (_parse_anchor_date(text) for text in entries) if d is not None
+    )
+    if not entry_dates:
+        return today
+    if any(d.year == today.year and d.month == today.month for d in entry_dates):
+        return today
+    upcoming = [d for d in entry_dates if d >= today]
+    return upcoming[0] if upcoming else entry_dates[-1]
+
+
+# ---------------------------------------------------------------------------
+# Named schedules
+# ---------------------------------------------------------------------------
+
+def _clear_staged_schedule() -> None:
+    staged = session.pop("schedules_staged", None)
+    if staged:
         try:
-            day = datetime.strptime(date_text, "%Y-%m-%d").date()
-        except ValueError:
-            continue
-        parsed_dates.append(day)
-        by_date.setdefault(date_text, []).append(assignment)
+            os.unlink(staged)
+        except OSError:
+            pass
 
-    if not parsed_dates:
-        return []
 
-    months = []
-    year_months = sorted({(day.year, day.month) for day in parsed_dates})
-    for year, month in year_months:
-        weeks = []
-        for week in py_calendar.Calendar(firstweekday=6).monthdatescalendar(year, month):
-            days = []
-            for day in week:
-                date_text = day.isoformat()
-                shifts = sorted(
-                    by_date.get(date_text, []),
-                    key=lambda item: (str(item.get("start_time", "")), str(item.get("shift_id", ""))),
-                )
-                days.append({
-                    "date": day,
-                    "date_text": date_text,
-                    "in_month": day.month == month,
-                    "shifts": shifts,
-                })
-            weeks.append(days)
-        months.append({
-            "label": datetime(year, month, 1).strftime("%B %Y"),
-            "weeks": weeks,
+def _read_block_csv_rows(path: Path) -> list[dict]:
+    """Read a schedule CSV (simple or block format) as raw dict rows after
+    validating it through the loader."""
+    config = load_config(current_app.config.get("SCHEDULER_CONFIG", "config/config.yaml"))
+    load_shifts(str(path), config)
+    with path.open(newline="", encoding="utf-8") as f:
+        return [row for row in csv.DictReader(f) if (row.get("shift_id") or "").strip()]
+
+
+@bp.route("/schedules")
+def schedules_page():
+    schedules = store.list_schedules()
+    referenced = {s["csv_filename"] for s in schedules if s["csv_filename"]}
+    unimported = [
+        f for f in _list_csv_files(_csv_dir())
+        if f["name"] not in referenced and not f["is_preferences"]
+    ]
+    return render_template(
+        "schedules.html",
+        nav_active="schedules",
+        schedules=schedules,
+        classifications=store.list_classifications(),
+        unimported=unimported,
+        default_schedule_id=store.get_default_schedule_id(),
+    )
+
+
+@bp.route("/schedules/save", methods=["POST"])
+@admin_required
+def schedules_save():
+    name = request.form.get("name", "").strip()
+    classification_slug = request.form.get("classification", "").strip()
+    server_file = request.form.get("server_file", "").strip()
+    upload = request.files.get("csv_file")
+
+    classification_id = None
+    if classification_slug:
+        classification = store.get_classification_by_slug(classification_slug)
+        if classification is None:
+            flash("Choose a valid classification.", "danger")
+            return redirect(url_for("main.schedules_page"))
+        classification_id = classification["id"]
+
+    temp_path = None
+    try:
+        if upload and upload.filename:
+            fd, temp_path = tempfile.mkstemp(suffix=".csv")
+            with os.fdopen(fd, "wb") as f:
+                upload.save(f)
+            rows = _read_block_csv_rows(Path(temp_path))
+            source = "upload"
+            source_file = Path(temp_path)
+        elif request.form.get("from_staged") == "1":
+            staged = session.get("schedules_staged", "")
+            if not staged or not Path(staged).exists():
+                raise ValueError("The uploaded file is no longer available; upload it again.")
+            rows = _read_block_csv_rows(Path(staged))
+            source = "upload"
+            source_file = Path(staged)
+        elif server_file:
+            path = _schedule_file_path(server_file)
+            if not path.exists():
+                raise ValueError(f"Server file {server_file} was not found.")
+            rows = _read_block_csv_rows(path)
+            source = "server_csv"
+            source_file = path
+        elif request.form.get("from_preview") == "1":
+            staged = session.get("calendar_preview")
+            if not staged or not Path(staged.get("path", "")).exists():
+                raise ValueError("The previewed file is no longer available.")
+            with open(staged["path"], encoding="utf-8") as f:
+                rows = json.load(f).get("rows", [])
+            source = "upload"
+            source_file = None
+        else:
+            raise ValueError("Choose a CSV file (upload or server storage).")
+
+        if not name:
+            raise ValueError("Enter a schedule name.")
+
+        existing = store.get_schedule_by_name(name)
+        if existing and request.form.get("overwrite") != "1":
+            form_fields = {
+                "name": [name],
+                "classification": [classification_slug],
+                "server_file": [server_file],
+                "from_preview": [request.form.get("from_preview", "")],
+            }
+            if temp_path:
+                # Stage the upload so the confirm re-post can find it.
+                _clear_staged_schedule()
+                fd, staged_path = tempfile.mkstemp(suffix=".csv", prefix="mu2e_staged_")
+                os.close(fd)
+                shutil.copyfile(temp_path, staged_path)
+                session["schedules_staged"] = staged_path
+                form_fields["from_staged"] = ["1"]
+            elif request.form.get("from_staged") == "1":
+                form_fields["from_staged"] = ["1"]
+            return render_template(
+                "schedule_confirm_overwrite.html",
+                nav_active="schedules",
+                existing=existing,
+                action=url_for("main.schedules_save"),
+                form_fields=form_fields,
+            )
+
+        # Persist a backing CSV so file-based flows keep working.
+        backing_name = f"{store.slugify(name)}.csv"
+        backing_path = _csv_dir() / backing_name
+        schedule_id, dropped = store.upsert_schedule(
+            name,
+            classification_id,
+            rows,
+            source=source,
+            created_by=getattr(current_user, "email", ""),
+            csv_filename=backing_name,
+        )
+        backing_path.parent.mkdir(parents=True, exist_ok=True)
+        if source_file is not None and source_file.resolve() != backing_path.resolve():
+            shutil.copyfile(source_file, backing_path)
+        elif source_file is None:
+            backing_path.write_text(rows_to_block_csv_string(rows), encoding="utf-8")
+        if request.form.get("from_staged") == "1":
+            _clear_staged_schedule()
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("main.schedules_page"))
+    finally:
+        if temp_path:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+    message = f"Saved schedule '{name}'."
+    if dropped:
+        message += f" Dropped {dropped} saved assignment(s) for removed shifts."
+    flash(message, "success")
+    return redirect(url_for("main.calendar_view", schedule=name))
+
+
+@bp.route("/schedules/<int:schedule_id>/delete", methods=["POST"])
+@admin_required
+def schedules_delete(schedule_id: int):
+    schedule = store.get_schedule(schedule_id)
+    if schedule is None:
+        flash("Schedule not found.", "danger")
+    else:
+        store.delete_schedule(schedule_id)
+        if store.get_default_schedule_id() == schedule_id:
+            store.set_default_schedule_id(None)
+        flash(f"Deleted schedule '{schedule['name']}'. Its backing CSV file was kept.", "success")
+    return redirect(url_for("main.schedules_page"))
+
+
+@bp.route("/schedules/<int:schedule_id>/export.csv")
+def schedules_export_csv(schedule_id: int):
+    schedule = store.get_schedule(schedule_id)
+    if schedule is None:
+        flash("Schedule not found.", "danger")
+        return redirect(url_for("main.schedules_page"))
+    rows = []
+    for row in store.get_schedule_shifts(schedule_id):
+        row = dict(row)
+        row["schedule_name"] = schedule["name"]
+        row["shift_type"] = row.get("shift_name", "")
+        row["points"] = "" if row.get("points") is None else row["points"]
+        rows.append(row)
+    content = rows_to_block_csv_string(rows).encode("utf-8")
+    return send_file(
+        io.BytesIO(content),
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name=f"{schedule['slug']}.csv",
+    )
+
+
+@bp.route("/schedules/<int:schedule_id>/assignments/export.<fmt>")
+def schedules_export_assignments(schedule_id: int, fmt: str):
+    schedule = store.get_schedule(schedule_id)
+    if schedule is None or fmt not in {"csv", "json"}:
+        flash("Schedule not found.", "danger")
+        return redirect(url_for("main.schedules_page"))
+    assignments = store.get_assignments(schedule_id)
+    merged = []
+    for shift in store.get_schedule_shifts(schedule_id):
+        assignment = assignments.get(shift["shift_id"], {})
+        merged.append({
+            "shift_id": shift["shift_id"],
+            "date": shift["date"],
+            "start_time": shift["start_time"],
+            "end_time": shift["end_time"],
+            "points": shift["points"] if shift["points"] is not None else "",
+            "person": assignment.get("person", ""),
+            "institution": assignment.get("institution", ""),
+            "is_preferred": assignment.get("is_preferred", ""),
+            "pref_rank": assignment.get("pref_rank", ""),
         })
-    return months
+    if fmt == "csv":
+        content = as_csv_string(merged).encode("utf-8")
+        mimetype = "text/csv"
+    else:
+        content = as_json_string(merged).encode("utf-8")
+        mimetype = "application/json"
+    return send_file(
+        io.BytesIO(content),
+        mimetype=mimetype,
+        as_attachment=True,
+        download_name=f"{schedule['slug']}-assignments.{fmt}",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Container file storage (browse / download / upload)
+# ---------------------------------------------------------------------------
+
+# Filenames in the storage dirs that must never be served or overwritten.
+_PROTECTED_FILES = {"users.sqlite", "app.sqlite", "preferences.json"}
+
+
+def _storage_dir(kind: str) -> tuple[Path, set]:
+    """Map a storage-dir keyword to (directory, allowed extensions)."""
+    if kind == "csv":
+        return _csv_dir(), {".csv"}
+    if kind == "data":
+        return _data_dir(), {".json"}
+    raise ValueError("Unknown storage directory.")
+
+
+def _storage_file_path(kind: str, name: str) -> Path:
+    directory, extensions = _storage_dir(kind)
+    safe_name = secure_filename((name or "").strip())
+    if not safe_name:
+        raise ValueError("Choose a file.")
+    if Path(safe_name).suffix.lower() not in extensions:
+        raise ValueError(f"Only {', '.join(sorted(extensions))} files are allowed here.")
+    if safe_name in _PROTECTED_FILES or safe_name.endswith(("-wal", "-shm")):
+        raise ValueError("That file is not accessible.")
+    path = (directory / safe_name).resolve()
+    if path.parent != directory.resolve():
+        raise ValueError("Invalid file name.")
+    return path
+
+
+def _list_storage_files(kind: str) -> list[dict]:
+    directory, extensions = _storage_dir(kind)
+    if not directory.exists():
+        return []
+    files = []
+    for ext in sorted(extensions):
+        for path in directory.glob(f"*{ext}"):
+            if not path.is_file() or path.name in _PROTECTED_FILES:
+                continue
+            stat = path.stat()
+            files.append({
+                "name": path.name,
+                "size": stat.st_size,
+                "modified": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+            })
+    files.sort(key=lambda f: f["name"].lower())
+    return files
+
+
+@bp.route("/api/files")
+def api_files():
+    kind = request.args.get("dir", "csv").strip()
+    try:
+        files = _list_storage_files(kind)
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+    return {"dir": kind, "files": files}
+
+
+@bp.route("/files/download")
+def download_stored_file():
+    kind = request.args.get("dir", "csv").strip()
+    name = request.args.get("name", "")
+    try:
+        path = _storage_file_path(kind, name)
+        if not path.exists():
+            raise ValueError("File not found.")
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(request.referrer or url_for("main.calendar_view"))
+    return send_file(path, as_attachment=True, download_name=path.name)
+
+
+@bp.route("/files/upload", methods=["POST"])
+@admin_required
+def upload_stored_file():
+    kind = request.form.get("dir", "csv").strip()
+    upload = request.files.get("file")
+    redirect_target = request.form.get("next") or url_for("main.configuration")
+    if not upload or not upload.filename:
+        flash("Choose a file to upload.", "danger")
+        return redirect(redirect_target)
+
+    try:
+        target_path = _storage_file_path(kind, upload.filename)
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(redirect_target)
+
+    fd, temp_path = tempfile.mkstemp(suffix=target_path.suffix)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            upload.save(f)
+        # Validate content before it lands in the storage dir.
+        if kind == "csv":
+            _load_schedule_csv(Path(temp_path))
+        else:
+            if _load_saved_result_file(Path(temp_path)) is None:
+                raise ValueError("Not a valid saved-results JSON file.")
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(temp_path, target_path)
+    except ValueError as exc:
+        flash(f"Invalid file: {exc}", "danger")
+        return redirect(redirect_target)
+    except OSError as exc:
+        flash(f"Could not save file: {exc}", "danger")
+        return redirect(redirect_target)
+    finally:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+
+    flash(f"Uploaded {target_path.name}.", "success")
+    return redirect(redirect_target)
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +583,9 @@ def _calendar_months(assignments: list[dict]) -> list[dict]:
 
 @bp.route("/")
 def welcome():
-    return render_template("welcome.html")
+    if current_user.is_authenticated:
+        return redirect(url_for("main.calendar_view"))
+    return redirect(url_for("auth.login"))
 
 
 @bp.route("/about")
@@ -289,9 +623,15 @@ def configuration():
 
     return render_template(
         "configuration.html",
+        nav_active="admin",
         csv_dir=csv_dir,
+        data_dir=_data_dir(),
         preferences_path=preferences_path,
         csv_files=_list_csv_files(csv_dir),
+        data_files=_list_storage_files("data"),
+        classifications=store.list_classifications(),
+        schedules=store.list_schedules(),
+        default_schedule_id=store.get_default_schedule_id(),
     )
 
 
@@ -308,19 +648,34 @@ def index():
         "pass2_min": g.get("pass2_min_points_per_person", g.get("pass2_min_shifts_per_person", 0.0)),
         "pass2_max": g.get("pass2_max_points_per_person", g.get("pass2_max_shifts_per_person", 1000.0)),
     }
-    return render_template("index.html", defaults=defaults)
+    return render_template(
+        "index.html",
+        defaults=defaults,
+        stored_schedules=store.list_schedules(),
+    )
 
 
 @bp.route("/solve", methods=["POST"])
 def run_solve():
     shifts_file = request.files.get("shifts_file")
+    shifts_server = request.form.get("shifts_file_server", "").strip()
+    schedule_id_raw = request.form.get("schedule_id", "").strip()
     people_file = request.files.get("people_file")
+    people_server = request.form.get("people_file_server", "").strip()
 
-    if not shifts_file or not shifts_file.filename:
-        flash("A shifts CSV file is required.", "danger")
+    schedule_id = None
+    if schedule_id_raw:
+        try:
+            schedule_id = int(schedule_id_raw)
+        except ValueError:
+            schedule_id = None
+
+    has_shifts_source = (shifts_file and shifts_file.filename) or shifts_server or schedule_id
+    if not has_shifts_source:
+        flash("Choose a shifts source: upload a CSV, pick a server file, or pick a stored schedule.", "danger")
         return redirect(url_for("main.index"))
-    if not people_file or not people_file.filename:
-        flash("A people CSV file is required.", "danger")
+    if not ((people_file and people_file.filename) or people_server):
+        flash("A people CSV file is required (upload or server file).", "danger")
         return redirect(url_for("main.index"))
 
     cli_overrides = {
@@ -334,23 +689,41 @@ def run_solve():
 
     shifts_path = people_path = None
     try:
-        # Write uploads to temp files
-        fd, shifts_path = tempfile.mkstemp(suffix=".csv")
-        with os.fdopen(fd, "wb") as f:
-            shifts_file.save(f)
-
-        fd, people_path = tempfile.mkstemp(suffix=".csv")
-        with os.fdopen(fd, "wb") as f:
-            people_file.save(f)
-
         # Load config
         config = load_config(current_app.config.get("SCHEDULER_CONFIG", "config/config.yaml"))
         if alpha is not None:
             config["alpha"] = alpha
 
-        # Load and validate data
-        shifts = load_shifts(shifts_path, config)
-        people = load_people(people_path)
+        # Resolve the shifts source: stored schedule > server file > upload
+        if schedule_id:
+            if store.get_schedule(schedule_id) is None:
+                raise ValueError("The selected stored schedule was not found.")
+            shifts = store.schedule_to_shift_objects(schedule_id, config)
+            if not shifts:
+                raise ValueError("The selected stored schedule has no shifts.")
+        elif shifts_server:
+            server_path = _schedule_file_path(shifts_server)
+            if not server_path.exists():
+                raise ValueError(f"Server file {shifts_server} was not found.")
+            shifts = load_shifts(str(server_path), config)
+        else:
+            fd, shifts_path = tempfile.mkstemp(suffix=".csv")
+            with os.fdopen(fd, "wb") as f:
+                shifts_file.save(f)
+            shifts = load_shifts(shifts_path, config)
+
+        # Resolve the people source: server file > upload
+        if people_server:
+            people_csv_path = _schedule_file_path(people_server)
+            if not people_csv_path.exists():
+                raise ValueError(f"Server file {people_server} was not found.")
+            people = load_people(str(people_csv_path))
+        else:
+            fd, people_path = tempfile.mkstemp(suffix=".csv")
+            with os.fdopen(fd, "wb") as f:
+                people_file.save(f)
+            people = load_people(people_path)
+
         validate(shifts, people)
 
         # Build constraints
@@ -388,7 +761,9 @@ def run_solve():
             "n_shifts":  len(shifts),
             "n_people":  len(people),
         }
-        session["results_path"] = _save_session_data(results, constraints, config_summary, pass2_results)
+        session["results_path"] = _save_session_data(
+            results, constraints, config_summary, pass2_results, schedule_id=schedule_id
+        )
 
     except (ValueError, InfeasibleError) as exc:
         flash(str(exc), "danger")
@@ -409,18 +784,25 @@ def run_solve():
 
 @bp.route("/results")
 def results():
-    data, constraints, config_summary, pass2_results = _load_session_data()
-    if data is None:
+    payload = _load_session_payload()
+    if payload is None:
         flash("No results found. Please run the scheduler first.", "warning")
         return redirect(url_for("main.index"))
 
-    stats = compute_stats(data, constraints)
+    data = payload["results"]
+    source_schedule = None
+    if payload.get("schedule_id"):
+        source_schedule = store.get_schedule(payload["schedule_id"])
+    stats = compute_stats(data, payload.get("constraints", {}))
     return render_template(
         "results.html",
+        nav_active="results",
         assignments=data,
         stats=stats,
-        config_summary=config_summary,
-        has_pass2=bool(pass2_results),
+        config_summary=payload.get("config_summary", {}),
+        has_pass2=bool(payload.get("pass2_results")),
+        source_schedule=source_schedule,
+        now_date=datetime.utcnow().strftime("%Y-%m-%d"),
     )
 
 
@@ -446,7 +828,19 @@ def save_results():
         json.dump(payload, f, indent=2)
 
     flash(f"Saved results to {target_path.name}.", "success")
-    return redirect(url_for("main.calendar_view", file=target_path.name))
+
+    # When the solve ran from a stored schedule, persist the assignments there
+    # too so the named calendar shows them.
+    schedule_id = payload.get("schedule_id")
+    if schedule_id and request.form.get("save_to_schedule") == "1":
+        schedule = store.get_schedule(schedule_id)
+        if schedule:
+            store.save_assignments(schedule_id, payload["results"], payload["saved_by"])
+            store.bulk_upsert_contacts(payload["results"])
+            flash(f"Assignments saved to schedule '{schedule['name']}'.", "success")
+            return redirect(url_for("main.calendar_view", schedule=schedule["name"]))
+
+    return redirect(url_for("main.calendar_view", source="results", file=target_path.name))
 
 
 @bp.route("/results/pass2")
@@ -468,69 +862,247 @@ def results_pass2():
     )
 
 
-@bp.route("/calendar")
-def calendar_view():
-    result_files = _list_result_files()
-    csv_dir = _csv_dir()
-    schedule_files = _list_csv_files(csv_dir)
-    source = request.args.get("source", "results").strip()
-    selected_name = request.args.get("file", "").strip()
-    selected_schedule = request.args.get("schedule", "").strip()
-    if source != "schedule" and not selected_name and result_files:
-        selected_name = result_files[0]["name"]
+def _load_calendar_rows():
+    """Resolve the calendar data source from query params.
 
-    payload = None
-    assignments = []
-    months = []
-    schedule_path = None
+    Returns (entries, context) where context carries the selector state the
+    template needs. Sources, in priority order: session preview, legacy file
+    params (?source=results|schedule), then named schedules (default).
+    """
+    from app.calendar_data import build_entries
+
+    context = {
+        "source": "",
+        "preview": None,
+        "selected_schedule": None,
+        "selected_file": "",
+        "legacy_csv": "",
+    }
+
+    # Local-file preview staged by POST /calendar/preview
+    if request.args.get("preview") == "1":
+        staged = session.get("calendar_preview")
+        if staged and Path(staged.get("path", "")).exists():
+            with open(staged["path"], encoding="utf-8") as f:
+                payload = json.load(f)
+            context["preview"] = {"filename": staged.get("filename", "")}
+            return build_entries(payload.get("rows", [])), context
+        flash("The previewed file is no longer available.", "warning")
+
+    source = request.args.get("source", "").strip()
     if source == "schedule":
-        selected_name = ""
-        if not selected_schedule and schedule_files:
-            preference_schedule = next((file for file in schedule_files if file["is_preferences"]), None)
-            selected_schedule = (preference_schedule or schedule_files[0])["name"]
-
-        if selected_schedule:
+        name = request.args.get("schedule", "").strip()
+        context["source"] = "schedule"
+        context["legacy_csv"] = name
+        if name:
             try:
-                schedule_path = _schedule_file_path(selected_schedule)
-                if not schedule_path.exists():
-                    raise ValueError(f"Schedule file {selected_schedule} was not found.")
-                assignments = _load_schedule_csv(schedule_path)
+                path = _schedule_file_path(name)
+                if not path.exists():
+                    raise ValueError(f"Schedule file {name} was not found.")
+                return build_entries(_load_schedule_csv(path)), context
             except ValueError as exc:
                 flash(f"Could not load schedule CSV: {exc}", "danger")
-                selected_schedule = ""
-            else:
-                months = _calendar_months(assignments)
-        else:
-            flash("No schedule CSV has been uploaded yet.", "warning")
-    elif selected_name:
-        try:
-            selected_path = _result_file_path(selected_name)
-        except ValueError as exc:
-            flash(str(exc), "danger")
-            selected_name = ""
-        else:
-            payload = _load_saved_result_file(selected_path)
+        return {}, context
+    if source == "results":
+        name = request.args.get("file", "").strip()
+        context["source"] = "results"
+        context["selected_file"] = name
+        if name:
+            try:
+                path = _result_file_path(name)
+            except ValueError as exc:
+                flash(str(exc), "danger")
+                return {}, context
+            payload = _load_saved_result_file(path)
             if payload is None:
-                flash(f"Could not load saved results file {selected_name}.", "danger")
-                selected_name = ""
-            else:
-                assignments = payload["results"]
-                months = _calendar_months(assignments)
+                flash(f"Could not load saved results file {name}.", "danger")
+                return {}, context
+            return build_entries(payload["results"]), context
+        return {}, context
 
+    # Named-schedule mode (the default)
+    schedule = None
+    name = request.args.get("schedule", "").strip()
+    if name:
+        schedule = store.get_schedule_by_name(name)
+        if schedule is None:
+            flash(f"No schedule named '{name}' was found.", "warning")
+    context["requested_tab"] = request.args.get("tab", "").strip()
+    if schedule is None:
+        schedule = _pick_default_schedule(context["requested_tab"])
+    context["selected_schedule"] = schedule
+    if schedule is None:
+        return {}, context
+    entries = build_entries(
+        store.get_schedule_shifts(schedule["id"]),
+        store.get_assignments(schedule["id"]),
+    )
+    return entries, context
+
+
+def _pick_default_schedule(tab_slug: str):
+    """Admin default schedule (if it fits the tab), else newest in the tab."""
+    default_id = store.get_default_schedule_id()
+    if default_id:
+        schedule = store.get_schedule(default_id)
+        if schedule and (not tab_slug or schedule.get("classification_slug") == tab_slug):
+            return schedule
+    classification = store.get_classification_by_slug(tab_slug) if tab_slug else None
+    candidates = store.list_schedules(classification["id"] if classification else None)
+    if not candidates and not tab_slug:
+        return None
+    return candidates[0] if candidates else None
+
+
+@bp.route("/calendar")
+def calendar_view():
+    from app.calendar_data import day_agenda, month_grid, prev_next_anchors, week_grid
+
+    view = request.args.get("view", "month").strip()
+    if view not in {"month", "week", "today"}:
+        view = "month"
+
+    entries, context = _load_calendar_rows()
+
+    anchor = _parse_anchor_date(request.args.get("date", ""))
+    if anchor is None:
+        # The month/year picker submits separate fields.
+        try:
+            year = int(request.args.get("year", ""))
+            month = int(request.args.get("month", ""))
+            anchor = datetime(year, month, 1).date()
+        except ValueError:
+            anchor = _default_anchor(entries)
+
+    if view == "week":
+        grid = week_grid(entries, anchor)
+        agenda = None
+    elif view == "today":
+        grid = None
+        agenda = day_agenda(entries, anchor)
+    else:
+        grid = month_grid(entries, anchor.year, anchor.month)
+        agenda = None
+
+    # Navigation URLs preserve the active source/tab/schedule selection.
+    base_params = {"view": view}
+    if context.get("source"):
+        base_params["source"] = context["source"]
+        if context.get("legacy_csv"):
+            base_params["schedule"] = context["legacy_csv"]
+        if context.get("selected_file"):
+            base_params["file"] = context["selected_file"]
+    elif context.get("preview"):
+        base_params["preview"] = 1
+    else:
+        if context.get("requested_tab"):
+            base_params["tab"] = context["requested_tab"]
+        if context.get("selected_schedule"):
+            base_params["schedule"] = context["selected_schedule"]["name"]
+
+    prev_anchor, next_anchor = prev_next_anchors(view, anchor)
+    nav = {
+        "label": (grid or agenda)["label"],
+        "date": anchor.isoformat(),
+        "year": anchor.year,
+        "month": anchor.month,
+        "prev_url": url_for("main.calendar_view", date=prev_anchor, **base_params),
+        "next_url": url_for("main.calendar_view", date=next_anchor, **base_params),
+        "today_url": url_for("main.calendar_view", **base_params),
+    }
+
+    tabs = store.list_classifications(visible_only=True)
+    selected = context.get("selected_schedule")
+    active_tab = ""
+    if context.get("source") or context.get("preview"):
+        active_tab = "__files__"
+    elif context.get("requested_tab"):
+        active_tab = context["requested_tab"]
+    elif selected and selected.get("classification_slug"):
+        active_tab = selected["classification_slug"]
+    elif tabs:
+        active_tab = tabs[0]["slug"]
+
+    active_classification = store.get_classification_by_slug(active_tab) if active_tab not in {"", "__files__"} else None
+    tab_schedules = store.list_schedules(
+        active_classification["id"] if active_classification else None
+    )
+
+    default_schedule_id = store.get_default_schedule_id()
     return render_template(
         "calendar.html",
-        result_files=result_files,
-        schedule_files=schedule_files,
-        selected_schedule=selected_schedule,
-        selected_name=selected_name,
-        source=source,
-        assignments=assignments,
-        months=months,
-        config_summary=(payload or {}).get("config_summary", {}),
-        data_dir=_data_dir(),
-        csv_dir=csv_dir,
-        schedule_path=schedule_path,
+        nav_active="calendar",
+        tabs=tabs,
+        active_tab=active_tab,
+        view=view,
+        nav=nav,
+        grid=grid,
+        agenda=agenda,
+        preview=context.get("preview"),
+        selected_schedule=selected,
+        tab_schedules=tab_schedules,
+        default_schedule_id=default_schedule_id,
+        source=context.get("source", ""),
+        legacy_csv=context.get("legacy_csv", ""),
+        selected_file=context.get("selected_file", ""),
+        result_files=_list_result_files(),
+        schedule_files=_list_csv_files(_csv_dir()),
     )
+
+
+@bp.route("/calendar/preview", methods=["POST"])
+def calendar_preview():
+    upload = request.files.get("preview_file")
+    if not upload or not upload.filename:
+        flash("Choose a CSV or JSON file to preview.", "danger")
+        return redirect(url_for("main.calendar_view"))
+
+    suffix = Path(secure_filename(upload.filename)).suffix.lower()
+    if suffix not in {".csv", ".json"}:
+        flash("Only .csv schedules or .json saved results can be previewed.", "danger")
+        return redirect(url_for("main.calendar_view"))
+
+    fd, temp_path = tempfile.mkstemp(suffix=suffix)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            upload.save(f)
+        if suffix == ".csv":
+            rows = _read_block_csv_rows(Path(temp_path))
+        else:
+            payload = _load_saved_result_file(Path(temp_path))
+            if payload is None:
+                raise ValueError("Not a valid saved-results JSON file.")
+            rows = payload["results"]
+    except ValueError as exc:
+        flash(f"Could not preview file: {exc}", "danger")
+        return redirect(url_for("main.calendar_view"))
+    finally:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+
+    _clear_calendar_preview()
+    fd, staged_path = tempfile.mkstemp(suffix=".json", prefix="mu2e_preview_")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump({"rows": rows}, f)
+    session["calendar_preview"] = {"path": staged_path, "filename": upload.filename}
+    return redirect(url_for("main.calendar_view", preview=1))
+
+
+def _clear_calendar_preview() -> None:
+    staged = session.pop("calendar_preview", None)
+    if staged and staged.get("path"):
+        try:
+            os.unlink(staged["path"])
+        except OSError:
+            pass
+
+
+@bp.route("/calendar/preview/clear", methods=["POST"])
+def calendar_preview_clear():
+    _clear_calendar_preview()
+    return redirect(url_for("main.calendar_view"))
 
 
 @bp.route("/calendar/upload", methods=["POST"])

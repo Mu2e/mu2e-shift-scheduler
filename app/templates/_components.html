@@ -1,0 +1,42 @@
+{# Shared Jinja macros: file-source picker, contact link, calendar entry card. #}
+
+{% macro file_picker(name, accept, dir, label, required=false, help_text='') %}
+<div class="file-picker" data-dir="{{ dir }}" data-accept="{{ accept }}" data-name="{{ name }}">
+  <label class="form-label" for="{{ name }}">{{ label }}</label>
+  <div class="input-group">
+    <input class="form-control" type="file" id="{{ name }}" name="{{ name }}" accept="{{ accept }}">
+    <button class="btn btn-outline-secondary" type="button" data-fp-browse>Browse server&hellip;</button>
+  </div>
+  <input type="hidden" name="{{ name }}_server" value="">
+  <div class="form-text d-none" data-fp-chosen>
+    Server file: <code data-fp-chosen-name></code>
+    <a href="#" data-fp-clear>clear</a>
+  </div>
+  {% if help_text %}<div class="form-text">{{ help_text }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro contact_link(person) %}
+{%- if person.email -%}
+<a href="mailto:{{ person.email }}" class="person-link" data-contact
+   data-name="{{ person.name }}" data-email="{{ person.email }}"
+   data-institution="{{ person.institution }}" data-phone="{{ person.phone }}">{{ person.name }}</a>
+{%- else -%}
+<a href="#" class="person-link" data-contact
+   data-name="{{ person.name }}" data-email=""
+   data-institution="{{ person.institution }}" data-phone="{{ person.phone }}">{{ person.name }}</a>
+{%- endif -%}
+{% endmacro %}
+
+{% macro calendar_entry(entry) %}
+<div class="assignment-card {{ 'empty-shift' if not entry.person }} {{ 'span-cont' if entry.span.is_multi and entry.span.day_index > 1 }}">
+  <div class="assignment-time">{{ entry.start_time }}&ndash;{{ entry.end_time }}</div>
+  <div class="fw-semibold">
+    {{ entry.shift_name }}:
+    {% if entry.person %}{{ contact_link(entry.person) }}{% else %}<span class="text-muted">Empty</span>{% endif %}
+  </div>
+  {% if entry.span.is_multi %}
+  <div class="text-muted small">day {{ entry.span.day_index }} of {{ entry.span.total_days }}</div>
+  {% endif %}
+</div>
+{% endmacro %}

@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% from "_components.html" import file_picker %}
+{% block title %}Schedules - Mu2e Shift Scheduler{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-start gap-3 mb-4 flex-wrap">
+  <div class="me-auto">
+    <h1 class="h3 mb-1">Schedules</h1>
+    <div class="text-muted small">Named shift schedules grouped by classification.</div>
+  </div>
+  {% if current_user.is_authenticated and current_user.is_admin %}
+  <a href="{{ url_for('admin.shift_setup') }}" class="btn btn-primary">Shift Setup</a>
+  {% endif %}
+</div>
+
+{% for classification in classifications %}
+{% set class_schedules = schedules | selectattr('classification_id', 'equalto', classification.id) | list %}
+<div class="card mb-3">
+  <div class="card-header fw-semibold d-flex align-items-center">
+    {{ classification.name }}
+    {% if not classification.show_tab %}<span class="badge text-bg-secondary ms-2">tab hidden</span>{% endif %}
+    <span class="badge text-bg-light text-muted ms-auto">{{ class_schedules | length }} schedule(s)</span>
+  </div>
+  {% if class_schedules %}
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 align-middle">
+      <thead><tr><th>Name</th><th>Shifts</th><th>Assigned</th><th>Source</th><th>Updated</th><th></th></tr></thead>
+      <tbody>
+        {% for s in class_schedules %}
+        <tr>
+          <td>
+            <a href="{{ url_for('main.calendar_view', schedule=s.name) }}">{{ s.name }}</a>
+            {% if s.id == default_schedule_id %}<span class="badge text-bg-primary ms-1">default</span>{% endif %}
+          </td>
+          <td>{{ s.n_shifts }}</td>
+          <td>{{ s.n_assigned }}</td>
+          <td><span class="badge text-bg-light text-muted">{{ s.source }}</span></td>
+          <td class="text-muted small">{{ s.updated_at[:16].replace('T', ' ') }}</td>
+          <td class="text-end">
+            <div class="btn-group btn-group-sm">
+              <a class="btn btn-outline-secondary" href="{{ url_for('main.schedules_export_csv', schedule_id=s.id) }}">Export CSV</a>
+              {% if current_user.is_authenticated and current_user.is_admin %}
+              <form method="post" action="{{ url_for('main.schedules_delete', schedule_id=s.id) }}" class="d-inline"
+                    onsubmit="return confirm('Delete schedule {{ s.name }}? Saved assignments for it will be removed.');">
+                <button type="submit" class="btn btn-outline-danger">Delete</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-muted small">No schedules in this classification.</div>
+  {% endif %}
+</div>
+{% endfor %}
+
+{% set unclassified = schedules | selectattr('classification_id', 'none') | list %}
+{% if unclassified %}
+<div class="card mb-3">
+  <div class="card-header fw-semibold">Unclassified schedules</div>
+  <ul class="list-group list-group-flush">
+    {% for s in unclassified %}
+    <li class="list-group-item d-flex align-items-center">
+      <a href="{{ url_for('main.calendar_view', schedule=s.name) }}">{{ s.name }}</a>
+      <span class="text-muted small ms-2">{{ s.n_shifts }} shifts</span>
+      <a class="btn btn-sm btn-outline-secondary ms-auto"
+         href="{{ url_for('main.schedules_export_csv', schedule_id=s.id) }}">Export CSV</a>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if current_user.is_authenticated and current_user.is_admin %}
+<div class="card mb-3">
+  <div class="card-header fw-semibold">Save a schedule from a CSV file</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('main.schedules_save') }}" enctype="multipart/form-data" class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label" for="schedName">Schedule name</label>
+        <input class="form-control" type="text" id="schedName" name="name" required
+               placeholder="e.g. Fall 2026">
+        <div class="form-text">Re-using an existing name overwrites that schedule (after confirmation).</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="schedClass">Classification</label>
+        <select class="form-select" id="schedClass" name="classification">
+          <option value="">(none)</option>
+          {% for c in classifications %}
+          <option value="{{ c.slug }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-5">
+        {{ file_picker('csv_file', '.csv', 'csv', 'Schedule CSV',
+                       help_text='Choose a file from your machine or from server storage.') }}
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">Save schedule</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if unimported %}
+<div class="card mb-3">
+  <div class="card-header fw-semibold">Server CSV files not yet imported</div>
+  <ul class="list-group list-group-flush">
+    {% for f in unimported %}
+    <li class="list-group-item d-flex align-items-center gap-2 flex-wrap">
+      <code>{{ f.name }}</code>
+      <span class="text-muted small">{{ f.size }} bytes</span>
+      <a class="btn btn-sm btn-outline-secondary ms-auto"
+         href="{{ url_for('main.download_stored_file', dir='csv', name=f.name) }}">Download</a>
+      <form method="post" action="{{ url_for('main.schedules_save') }}" class="d-flex gap-2">
+        <input type="hidden" name="server_file" value="{{ f.name }}">
+        <input class="form-control form-control-sm" type="text" name="name" placeholder="Schedule name" required>
+        <select class="form-select form-select-sm" name="classification">
+          <option value="">(none)</option>
+          {% for c in classifications %}
+          <option value="{{ c.slug }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm btn-primary">Import</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

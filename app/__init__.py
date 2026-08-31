@@ -70,6 +70,9 @@ def create_app(
     from .preferences import bp as pref_bp
     app.register_blueprint(pref_bp)
 
+    from .admin_routes import bp as admin_bp
+    app.register_blueprint(admin_bp)
+
     from .auth import init_auth_db, init_login, seed_admin
     from .auth_routes import bp as auth_bp
     app.register_blueprint(auth_bp)

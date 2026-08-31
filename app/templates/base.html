@@ -20,29 +20,66 @@
 </head>
 <body>
 
-<nav class="navbar navbar-dark bg-dark mb-4">
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
   <div class="container">
-    <a class="navbar-brand" href="{{ url_for('main.welcome') }}">
+    <a class="navbar-brand" href="{{ url_for('main.calendar_view') }}">
       <span>Mu2e</span> Shift Scheduler
     </a>
-    <div class="d-flex gap-2">
-      <a href="/preferences/" class="btn btn-outline-success btn-sm">Submit Preferences</a>
-      <a href="/preferences/current" class="btn btn-outline-light btn-sm">View Preferences</a>
-      {% if current_user.is_authenticated and current_user.is_admin %}
-      <a href="{{ url_for('main.configuration') }}" class="btn btn-outline-light btn-sm">Configuration</a>
-      <a href="{{ url_for('auth.users') }}" class="btn btn-outline-light btn-sm">Users</a>
-      {% endif %}
-      <a href="{{ url_for('main.index') }}" class="btn btn-outline-light btn-sm">Scheduler</a>
-      <a href="{{ url_for('main.calendar_view') }}" class="btn btn-outline-light btn-sm">Calendar</a>
-      {% if session.get('results_path') %}
-      <a href="/results" class="btn btn-warning btn-sm">View Results</a>
-      {% endif %}
-      {% if current_user.is_authenticated %}
-      <form method="post" action="{{ url_for('auth.logout') }}" class="m-0">
-        <button type="submit" class="btn btn-outline-light btn-sm">Logout</button>
-      </form>
-      {% endif %}
-      <a href="{{ url_for('main.about') }}" class="btn btn-outline-light btn-sm ms-2">About</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+            aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="mainNav">
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item">
+          <a class="nav-link {{ 'active' if nav_active == 'calendar' }}"
+             {% if nav_active == 'calendar' %}aria-current="page"{% endif %}
+             href="{{ url_for('main.calendar_view') }}">Calendar</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {{ 'active' if nav_active == 'schedules' }}"
+             {% if nav_active == 'schedules' %}aria-current="page"{% endif %}
+             href="{{ url_for('main.schedules_page') }}">Schedules</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {{ 'active' if nav_active == 'scheduler' }}"
+             {% if nav_active == 'scheduler' %}aria-current="page"{% endif %}
+             href="{{ url_for('main.index') }}">Scheduler</a>
+        </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle {{ 'active' if nav_active == 'preferences' }}" href="#"
+             role="button" data-bs-toggle="dropdown" aria-expanded="false">Preferences</a>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="{{ url_for('preferences.index') }}">Submit Preferences</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('preferences.current') }}">View Preferences</a></li>
+          </ul>
+        </li>
+        {% if session.get('results_path') %}
+        <li class="nav-item">
+          <a class="nav-link text-warning {{ 'active' if nav_active == 'results' }}"
+             href="{{ url_for('main.results') }}">View Results</a>
+        </li>
+        {% endif %}
+        {% if current_user.is_authenticated and current_user.is_admin %}
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle {{ 'active' if nav_active == 'admin' }}" href="#"
+             role="button" data-bs-toggle="dropdown" aria-expanded="false">Admin</a>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="{{ url_for('admin.shift_setup') }}">Shift Setup</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('main.configuration') }}">Configuration</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('auth.users') }}">Users</a></li>
+          </ul>
+        </li>
+        {% endif %}
+      </ul>
+      <div class="d-flex align-items-center gap-2">
+        <a href="{{ url_for('main.about') }}" class="nav-link {{ 'active' if nav_active == 'about' }}">About</a>
+        {% if current_user.is_authenticated %}
+        <form method="post" action="{{ url_for('auth.logout') }}" class="m-0">
+          <button type="submit" class="btn btn-outline-light btn-sm">Logout</button>
+        </form>
+        {% endif %}
+      </div>
     </div>
   </div>
 </nav>
@@ -73,8 +110,11 @@
   </div>
 </footer>
 
+{% include "_file_picker_modal.html" %}
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
         crossorigin="anonymous"></script>
+<script src="{{ url_for('static', filename='js/mu2e.js') }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

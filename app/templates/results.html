@@ -81,20 +81,18 @@
 </p>
 {% endif %}
 
-<!-- ── Download buttons ──────────────────────────────────────── -->
-<div class="d-flex gap-2 mb-4 flex-wrap">
-  <a href="/download/csv" class="btn btn-success">
-    &#11123; Download CSV
+<!-- ── Export / save buttons ─────────────────────────────────── -->
+<div class="d-flex gap-2 mb-3 flex-wrap">
+  <a href="{{ url_for('main.download_csv') }}" class="btn btn-success">
+    &#11123; Export CSV
   </a>
-  <a href="/download/json" class="btn btn-info text-white">
-    &#11123; Download JSON
+  <a href="{{ url_for('main.download_json') }}" class="btn btn-info text-white">
+    &#11123; Export JSON
   </a>
-  <form method="post" action="{{ url_for('main.save_results') }}" id="saveResultsForm" class="m-0">
-    <input type="hidden" name="filename" id="saveResultsFilename">
-    <button type="button" class="btn btn-primary" id="saveResultsButton">
-      Save Results
-    </button>
-  </form>
+  <button type="button" class="btn btn-primary" data-bs-toggle="collapse"
+          data-bs-target="#saveResultsCard" aria-expanded="false">
+    Save Results&hellip;
+  </button>
   {% if has_pass2 %}
   <a href="{{ url_for('main.results_pass2') }}" class="btn btn-warning">
     Pass 2 Results
@@ -106,6 +104,32 @@
   <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary ms-auto">
     &#8617; New Schedule
   </a>
+</div>
+
+<div class="collapse mb-4" id="saveResultsCard">
+  <form method="post" action="{{ url_for('main.save_results') }}"
+        class="card card-body row g-2 flex-row align-items-end" style="max-width: 780px;">
+    <div class="col-md-5">
+      <label class="form-label" for="saveFilename">Results file name</label>
+      <input class="form-control" type="text" id="saveFilename" name="filename"
+             value="shift-assignments-{{ now_date }}.json" required>
+      <div class="form-text">Saved to server data storage and viewable on the calendar.</div>
+    </div>
+    {% if source_schedule %}
+    <div class="col-md-4">
+      <div class="form-check mt-4">
+        <input class="form-check-input" type="checkbox" id="saveToSchedule"
+               name="save_to_schedule" value="1" checked>
+        <label class="form-check-label" for="saveToSchedule">
+          Also save assignments to schedule <strong>{{ source_schedule.name }}</strong>
+        </label>
+      </div>
+    </div>
+    {% endif %}
+    <div class="col-md-auto">
+      <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+  </form>
 </div>
 
 <!-- ── Assignment table ──────────────────────────────────────── -->
@@ -238,15 +262,6 @@
 
 {% block scripts %}
 <script>
-// ── Save current results ──────────────────────────────────────────────────
-document.getElementById("saveResultsButton").addEventListener("click", function () {
-  const defaultName = "shift-assignments-" + new Date().toISOString().slice(0, 10) + ".json";
-  const filename = window.prompt("File name for saved results:", defaultName);
-  if (!filename) return;
-  document.getElementById("saveResultsFilename").value = filename;
-  document.getElementById("saveResultsForm").submit();
-});
-
 // ── Table filter ──────────────────────────────────────────────────────────
 document.getElementById("tableFilter").addEventListener("input", function () {
   const q = this.value.toLowerCase();

@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "_components.html" import file_picker %}
+{% set nav_active = 'scheduler' %}
 {% block title %}Configure — Mu2e Shift Scheduler{% endblock %}
 
 {% block content %}
@@ -17,27 +19,34 @@
         <div class="card-header fw-semibold">Input Files</div>
         <div class="card-body">
 
+          {% if stored_schedules %}
           <div class="mb-3">
-            <label class="form-label" for="shifts_file">
-              Shifts CSV
-              <span class="text-muted fw-normal small">
-                &mdash; columns: <code>shift_id, date, start_time, end_time</code>
-              </span>
-            </label>
-            <input class="form-control" type="file" id="shifts_file"
-                   name="shifts_file" accept=".csv" required>
+            <label class="form-label" for="schedule_id">Stored schedule</label>
+            <select class="form-select" id="schedule_id" name="schedule_id">
+              <option value="">(none — use a shifts CSV below)</option>
+              {% for s in stored_schedules %}
+              <option value="{{ s.id }}">
+                {{ s.name }}{% if s.classification_name %} — {{ s.classification_name }}{% endif %}
+                ({{ s.n_shifts }} shifts)
+              </option>
+              {% endfor %}
+            </select>
+            <div class="form-text">
+              Choosing a stored schedule overrides the shifts CSV, and saved
+              results can be written back to its calendar.
+            </div>
+          </div>
+          {% endif %}
+
+          <div class="mb-3">
+            {{ file_picker('shifts_file', '.csv', 'csv', 'Shifts CSV',
+                           help_text='Columns: shift_id, date, start_time, end_time (points optional). Choose a local file or browse server storage.') }}
             <div id="shifts_file_count" class="form-text"></div>
           </div>
 
           <div class="mb-0">
-            <label class="form-label" for="people_file">
-              People CSV
-              <span class="text-muted fw-normal small">
-                &mdash; columns: <code>name, pref_shift_1, pref_shift_2, ...</code>
-              </span>
-            </label>
-            <input class="form-control" type="file" id="people_file"
-                   name="people_file" accept=".csv" required>
+            {{ file_picker('people_file', '.csv', 'csv', 'People CSV',
+                           help_text='Columns: name, institution, email, phone, then ordered preferred shift IDs.') }}
             <div id="people_file_count" class="form-text"></div>
           </div>
 

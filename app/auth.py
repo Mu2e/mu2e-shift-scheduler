@@ -262,7 +262,7 @@ def oidc_authorize_redirect():
     nonce = secrets.token_urlsafe(24)
     session["oidc_nonce"] = nonce
     callback_url = url_for("auth.oidc_callback", _external=True)
-    session["oidc_next"] = request.args.get("next") or url_for("main.welcome")
+    session["oidc_next"] = request.args.get("next") or url_for("main.calendar_view")
     return oauth.fermilab.authorize_redirect(callback_url, nonce=nonce)
 
 
