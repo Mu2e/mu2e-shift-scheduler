@@ -23,6 +23,8 @@ class Shift:
 class Person:
     name: str
     institution: str = ""
+    email: str = ""
+    phone: str = ""
     # Ordered list of preferred shift IDs, most preferred first.
     preferences: list = field(default_factory=list)
 
@@ -88,10 +90,10 @@ def load_people(filepath: str) -> list:
     Load people from a CSV file.
 
     Required column:  name
-    Optional column:  institution
+    Optional columns: institution, email, phone
     Remaining columns are treated as ordered preferred shift IDs (empty cells skipped).
     """
-    _RESERVED = {"name", "institution"}
+    _RESERVED = {"name", "institution", "email", "phone"}
     people = []
     seen_names: set = set()
     with open(filepath, newline="", encoding="utf-8") as f:
@@ -108,8 +110,11 @@ def load_people(filepath: str) -> list:
                 raise ValueError(f"Duplicate person name in people file: '{name}'")
             seen_names.add(name)
             institution = row.get("institution", "").strip() if has_institution else ""
+            email = (row.get("email") or "").strip()
+            phone = (row.get("phone") or "").strip()
             preferences = [row[c].strip() for c in pref_cols if row.get(c, "").strip()]
-            people.append(Person(name=name, institution=institution, preferences=preferences))
+            people.append(Person(name=name, institution=institution, email=email,
+                                 phone=phone, preferences=preferences))
     if not people:
         raise ValueError("People file contains no data rows.")
     return people

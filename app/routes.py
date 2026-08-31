@@ -368,12 +368,13 @@ def run_solve():
             pass2_max=effective_pass2_max,
         )
 
-        # Enrich results with institution
-        person_inst = {p.name: p.institution for p in people}
-        for r in results:
-            r["institution"] = person_inst.get(r["person"], "")
-        for r in pass2_results:
-            r["institution"] = person_inst.get(r["person"], "")
+        # Enrich results with institution and contact info
+        person_map = {p.name: p for p in people}
+        for r in results + pass2_results:
+            person = person_map.get(r["person"])
+            r["institution"] = person.institution if person else ""
+            r["email"] = person.email if person else ""
+            r["phone"] = person.phone if person else ""
 
         # Store results
         _cleanup_old_results()
