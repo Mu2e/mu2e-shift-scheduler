@@ -34,7 +34,7 @@ def local_login():
         return redirect(url_for("auth.login"))
 
     login_user(user)
-    return redirect(request.args.get("next") or url_for("main.welcome"))
+    return redirect(request.args.get("next") or url_for("main.calendar_view"))
 
 
 @bp.route("/login/oidc")
@@ -54,7 +54,7 @@ def oidc_callback():
         return redirect(url_for("auth.login"))
     login_user(user)
     from flask import session
-    return redirect(session.pop("oidc_next", None) or url_for("main.welcome"))
+    return redirect(session.pop("oidc_next", None) or url_for("main.calendar_view"))
 
 
 @bp.route("/logout", methods=["POST", "GET"])

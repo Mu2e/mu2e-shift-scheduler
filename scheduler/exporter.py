@@ -7,7 +7,7 @@ import json
 from collections import defaultdict
 
 
-_FIELDNAMES = ["shift_id", "date", "start_time", "end_time", "points", "person", "institution", "is_preferred", "pref_rank"]
+_FIELDNAMES = ["shift_id", "date", "start_time", "end_time", "points", "person", "institution", "email", "phone", "is_preferred", "pref_rank"]
 
 
 def to_csv(results: list, path: str) -> None:

@@ -1,0 +1,20 @@
+# Copy to my-values-test.yaml (gitignored) and fill in.
+#
+# Use credentials that are DIFFERENT from production: this instance is a test
+# target, and a leaked test secret must not grant anything on mu2e-shifts.
+
+flask:
+  secretKey: "<generate-a-long-random-value-distinct-from-production>"
+
+auth:
+  initialAdminUsername: mu2e-admin
+  initialAdminEmail: mu2e-admin@fnal.gov
+  initialAdminPassword: "<set-a-test-only-admin-password>"
+
+oidc:
+  # The redirect URI for the test route host must be registered with the
+  # provider before SSO will work here. Until then, log in with the local
+  # administrator form (values-test.yaml keeps it visible).
+  providerUrl: "https://<fermilab-oidc-provider>/.well-known/openid-configuration"
+  clientId: "<oidc-client-id>"
+  clientSecret: "<oidc-client-secret>"

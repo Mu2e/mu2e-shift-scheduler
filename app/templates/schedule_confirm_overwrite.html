@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Confirm overwrite - Mu2e Shift Scheduler{% endblock %}
+
+{% block content %}
+<div class="card border-warning" style="max-width: 640px;">
+  <div class="card-header bg-warning-subtle fw-semibold">Overwrite existing schedule?</div>
+  <div class="card-body">
+    <p>
+      A schedule named <strong>{{ existing.name }}</strong>
+      {% if existing.classification_name %}({{ existing.classification_name }}){% endif %}
+      already exists (last updated {{ existing.updated_at[:16].replace('T', ' ') }}{% if existing.created_by %}
+      by {{ existing.created_by }}{% endif %}).
+    </p>
+    <p class="mb-4">
+      Overwriting replaces its shifts. Saved assignments are kept only for shift IDs
+      that still exist in the new schedule.
+    </p>
+    <div class="d-flex gap-2">
+      <form method="post" action="{{ action }}" class="m-0">
+        {% for key, values in form_fields.items() %}
+          {% for value in values %}
+          <input type="hidden" name="{{ key }}" value="{{ value }}">
+          {% endfor %}
+        {% endfor %}
+        <input type="hidden" name="overwrite" value="1">
+        <button type="submit" class="btn btn-warning">Overwrite {{ existing.name }}</button>
+      </form>
+      <a href="{{ request.referrer or url_for('main.schedules_page') }}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,6 +1,9 @@
 # Mu2e Shift Scheduler Configuration
 # All values here are defaults and can be overridden by CLI arguments.
 
+#
+# These are the global defaults for the optimizer.  Basically this sets 
+# up how the solve form is populated (but all can be updated from the web)
 global:
   target_points_per_person: 2.0  # Soft target: penalty applied when actual != target (in shift-points)
   min_points_per_person: 1.0     # Hard minimum shift-points each person must accumulate
@@ -33,7 +36,13 @@ overrides: []
 #     max: 4.0
 #     target: 3.0
 
+
+#################################################################
+# Web Application Settings
+# These are the settings that are used when 
+# starting up the test server on the localhost (not when it's deployed)
+
 web:
   host: "127.0.0.1"
-  port: 5000
+  port: 8001
   debug: false

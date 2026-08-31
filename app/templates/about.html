@@ -61,9 +61,53 @@
           person, using relaxed per-person bounds.
         </p>
         <p class="mb-0">
-          Placeholder text about data handling, how preferences are collected, or how
-          results are exported.
+          Named schedules, their classification taxonomy, calendar settings, and
+          shifter contact info are stored in a SQLite database on the server;
+          schedule CSVs and saved result JSON files live in server file storage
+          and can be uploaded, downloaded, and exported from the Configuration,
+          Schedules, and Results pages.
         </p>
+      </div>
+    </div>
+
+    <!-- Dependencies -->
+    <div class="card mb-4">
+      <div class="card-header fw-semibold">Dependencies</div>
+      <div class="card-body">
+        <ul class="mb-0">
+          <li><a href="https://flask.palletsprojects.com/" target="_blank">Flask 3</a> + Jinja2 (web framework and templates)</li>
+          <li><a href="https://flask-login.readthedocs.io/" target="_blank">Flask-Login</a> + <a href="https://authlib.org/" target="_blank">Authlib</a> (sessions and Fermilab OIDC single sign-on)</li>
+          <li><a href="https://coin-or.github.io/pulp/" target="_blank">PuLP</a> + CBC (integer linear programming solver)</li>
+          <li><a href="https://pyyaml.org/" target="_blank">PyYAML</a> (solver configuration)</li>
+          <li><a href="https://gunicorn.org/" target="_blank">gunicorn</a> (production WSGI server)</li>
+          <li><a href="https://getbootstrap.com/" target="_blank">Bootstrap 5.3</a> (styling, via CDN)</li>
+          <li>SQLite (Python stdlib) for schedules, taxonomy, settings, contacts, and user accounts</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Routes / API -->
+    <div class="card mb-4">
+      <div class="card-header fw-semibold">Pages &amp; API Routes</div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>Route</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td><code>GET /calendar</code></td><td>Calendar (default view after login). Params: <code>tab</code> (classification slug), <code>view</code> = <code>month|week|today</code>, <code>date</code> = <code>YYYY-MM-DD</code>, <code>schedule</code> (schedule name); legacy <code>source=results|schedule</code> + <code>file</code>/<code>schedule</code> file params.</td></tr>
+              <tr><td><code>POST /calendar/preview</code></td><td>Stage a local CSV/JSON file for transient calendar viewing.</td></tr>
+              <tr><td><code>GET /schedules</code></td><td>Named schedules by classification; <code>POST /schedules/save</code>, <code>POST /schedules/&lt;id&gt;/delete</code> (admin), <code>GET /schedules/&lt;id&gt;/export.csv</code>, <code>GET /schedules/&lt;id&gt;/assignments/export.csv|json</code>.</td></tr>
+              <tr><td><code>GET /schedule</code>, <code>POST /solve</code></td><td>Solver form and run; shifts from upload, server CSV, or a stored schedule.</td></tr>
+              <tr><td><code>GET /results</code>, <code>POST /results/save</code></td><td>Solver results; save to a server JSON file and optionally back to the source schedule.</td></tr>
+              <tr><td><code>GET /api/files?dir=csv|data</code></td><td>JSON listing of server file storage.</td></tr>
+              <tr><td><code>GET /files/download?dir=&amp;name=</code>, <code>POST /files/upload</code></td><td>Download / upload (admin) container storage files.</td></tr>
+              <tr><td><code>GET|POST /admin/shift-setup</code></td><td>Admin: construct and generate a shift schedule.</td></tr>
+              <tr><td><code>POST /admin/taxonomy/*</code>, <code>POST /admin/settings</code></td><td>Admin: classification taxonomy and calendar defaults.</td></tr>
+              <tr><td><code>GET|POST /configuration</code>, <code>GET /admin/users</code></td><td>Admin: file manager / taxonomy / defaults, and user roles.</td></tr>
+              <tr><td><code>GET /preferences/*</code></td><td>Shift preference submission and review.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 

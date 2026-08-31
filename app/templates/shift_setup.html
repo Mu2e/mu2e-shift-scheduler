@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Shift Setup - Mu2e Shift Scheduler{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <h1 class="h3 mb-1">Shift Setup</h1>
+  <div class="text-muted small">
+    Construct a shift schedule: define the date range, the shifts in each period,
+    how the pattern repeats, and the weight (points) of each shift. Generating a
+    schedule stores it under its name and writes a matching CSV to server storage.
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('admin.shift_setup_generate') }}" id="shiftSetupForm">
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">Schedule</div>
+    <div class="card-body row g-3">
+      <div class="col-md-4">
+        <label class="form-label" for="name">Schedule name</label>
+        <input class="form-control" type="text" id="name" name="name" required
+               value="{{ form_data.get('name', '') }}" placeholder="e.g. Fall 2026">
+        <div class="form-text">Re-using an existing name overwrites that schedule (after confirmation).</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="classification">Classification</label>
+        <select class="form-select" id="classification" name="classification">
+          <option value="">(none)</option>
+          {% for c in classifications %}
+          <option value="{{ c.slug }}" {{ 'selected' if form_data.get('classification') == c.slug }}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label" for="date_start">Start date</label>
+        <input class="form-control" type="date" id="date_start" name="date_start" required
+               value="{{ form_data.get('date_start', '') }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label" for="date_end">Stop date</label>
+        <input class="form-control" type="date" id="date_end" name="date_end" required
+               value="{{ form_data.get('date_end', '') }}">
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header fw-semibold d-flex align-items-center">
+      Shifts per day
+      <span class="badge text-bg-light text-muted ms-2"><span data-row-count="shifts">0</span> shift(s)</span>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive" data-dynamic-rows="shifts" data-template="shiftRowTemplate">
+        <table class="table table-sm align-middle mb-2">
+          <thead>
+            <tr>
+              <th style="min-width: 12rem;">Shift name</th>
+              <th>Start time</th>
+              <th>Stop time</th>
+              <th>Weight</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="shiftRows">
+            {% for i in range(3) %}
+            <tr>
+              <td><input class="form-control form-control-sm" type="text" name="shift_name[]"
+                         placeholder="e.g. Day, Evening, Night"></td>
+              <td><input class="form-control form-control-sm" type="time" name="shift_start[]"></td>
+              <td><input class="form-control form-control-sm" type="time" name="shift_end[]"></td>
+              <td><input class="form-control form-control-sm" type="number" step="any" min="0"
+                         name="shift_weight[]" placeholder="1.0"></td>
+              <td class="text-end">
+                <button type="button" class="btn btn-sm btn-outline-danger" data-remove-row>Remove</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-primary" data-add-row="shifts">Add shift</button>
+      <div class="form-text">
+        Blank rows are ignored. Leave the weight empty to use the configured
+        day/night defaults from <code>config.yaml</code>.
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">Pattern</div>
+    <div class="card-body row g-3">
+      <div class="col-md-3">
+        <label class="form-label" for="shift_length_days">Shift length (days)</label>
+        <input class="form-control" type="number" id="shift_length_days" name="shift_length_days"
+               min="1" value="{{ form_data.get('shift_length_days', '1') }}" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="repeat">Repetition rate</label>
+        <select class="form-select" id="repeat" name="repeat">
+          {% for value, label in [('day', 'Daily'), ('week', 'Weekly'), ('2week', 'Every 2 weeks'), ('month', 'Monthly')] %}
+          <option value="{{ value }}" {{ 'selected' if form_data.get('repeat', 'week') == value }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <div class="form-label">Days of week (multi-day shifts)</div>
+        <div class="d-flex flex-wrap gap-3">
+          {% set checked_days = form_data.getlist('weekdays[]') if form_data.getlist is defined else [] %}
+          {% for value, label in [(0, 'Mon'), (1, 'Tue'), (2, 'Wed'), (3, 'Thu'), (4, 'Fri'), (5, 'Sat'), (6, 'Sun')] %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="weekdays[]" value="{{ value }}"
+                   id="wd{{ value }}" {{ 'checked' if value | string in checked_days }}>
+            <label class="form-check-label" for="wd{{ value }}">{{ label }}</label>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="form-text">
+          For weekly/bi-weekly/monthly multi-day blocks, the checked days define the block
+          (e.g. Mon&ndash;Thu). Ignored for daily repetition.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-primary btn-lg">Generate schedule</button>
+</form>
+
+<template id="shiftRowTemplate">
+  <tr>
+    <td><input class="form-control form-control-sm" type="text" name="shift_name[]"
+               placeholder="e.g. Day, Evening, Night"></td>
+    <td><input class="form-control form-control-sm" type="time" name="shift_start[]"></td>
+    <td><input class="form-control form-control-sm" type="time" name="shift_end[]"></td>
+    <td><input class="form-control form-control-sm" type="number" step="any" min="0"
+               name="shift_weight[]" placeholder="1.0"></td>
+    <td class="text-end">
+      <button type="button" class="btn btn-sm btn-outline-danger" data-remove-row>Remove</button>
+    </td>
+  </tr>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // End date must not precede start date.
+  document.getElementById("shiftSetupForm").addEventListener("submit", function (e) {
+    var start = document.getElementById("date_start").value;
+    var end = document.getElementById("date_end").value;
+    if (start && end && end < start) {
+      e.preventDefault();
+      alert("Stop date must be on or after the start date.");
+    }
+  });
+</script>
+{% endblock %}

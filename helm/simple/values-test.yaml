@@ -1,0 +1,54 @@
+# Non-secret overrides for the mu2e-test instance.
+#
+# Layered on top of values.yaml, and itself overridden by a private
+# my-values-test.yaml holding the secrets:
+#
+#   ./scripts/deploy-okd.sh -n mu2e-test --release mu2e-test \
+#       -t test --tls-secret mu2e-test-tls \
+#       -f helm/simple/values-test.yaml -f my-values-test.yaml
+#
+# This file must not contain secrets; it is committed to the repository.
+
+route:
+  # mu2e-okd-test.fnal.gov is the registered name for this namespace: it is a
+  # CNAME to okdprod1-mu2e-test.fnal.gov (131.225.163.71, the OKD ingress VIP),
+  # the same shape as mu2e-shifts.fnal.gov -> okdprod1-mu2e-shifts.fnal.gov, and
+  # it is the name the cluster's OPA webhook permits Certificates for here.
+  #
+  # Do not use mu2e-test.fnal.gov: it is an A record for 131.225.113.180, an
+  # unrelated non-cluster host, and OPA rejects Certificates for it.
+  #
+  # Changing this on an existing release needs the Route deleted first --
+  # OpenShift permits a custom spec.host at creation but not on update:
+  #   oc delete route web -n mu2e-test
+  hostname: mu2e-okd-test.fnal.gov
+  timeout: 1800s
+  ingressController: public-proxy
+
+certManager:
+  enabled: true
+  clusterIssuer: incommon-acme
+  # Kept distinct from the production mu2e-shifts-tls secret.
+  secretName: mu2e-test-tls
+  externalCertificate: true
+
+# The test instance is a validation target, not a production workload; give it
+# roughly half the production footprint so it does not compete for project quota.
+resources:
+  limits:
+    cpu: "1"
+    memory: 2Gi
+  requests:
+    cpu: 250m
+    memory: 512Mi
+
+gunicorn:
+  workers: 2
+  timeout: 1800
+  logLevel: debug
+
+auth:
+  # Production hides this form (SSO only). It stays visible on test so there is
+  # still a way in before the test host's redirect URI is registered with the
+  # Fermilab OIDC provider.
+  showAdminLogin: "1"

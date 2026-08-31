@@ -47,6 +47,9 @@ preferences:
 
 data:
   dir: /app/data
+  # SQLite database for named schedules, taxonomy, settings, and contacts.
+  # Defaults to <data.dir>/app.sqlite when unset.
+  appDbPath: ""
 
 auth:
   dbPath: /app/data/users.sqlite

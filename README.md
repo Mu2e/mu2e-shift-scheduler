@@ -66,6 +66,35 @@ builtin help.
 - **CLI interface** — `python3 cli.py solve` for scripted/batch use.
 - **CSV and JSON output** — assignments exported in either format, including
   shift points and institution.
+- **Named schedules** — schedules are stored under a global name
+  (e.g. "Fall 2026") with a classification from an admin-managed taxonomy
+  ("General Shifts", "Run Coordinators", "Oncall DAQ Experts", ...);
+  re-submitting an existing name overwrites it after confirmation.
+- **Calendar views** — the default post-login page: one tab per
+  classification, month/week/today views with month and year navigation,
+  an admin-selected default calendar, multi-day shift blocks expanded onto
+  every covered day ("Day: Bob" on each day), "Empty" for unassigned
+  shifts, and assigned names linking to contact info (mailto/phone).
+- **Shift Setup page** — admins construct a schedule in the browser:
+  date range, shifts per day (name, time range, float weight), shift
+  length in days, repetition rate (day/week/2-week/month), and weekday
+  checkboxes; "Generate schedule" stores it and writes a matching CSV.
+- **Server file storage** — every browse button accepts a local file or a
+  file from container storage; upload, download, and export endpoints
+  cover both the CSV and data directories.
+
+---
+
+## Testing
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests/
+```
+
+The suite covers the block/date logic (`scheduler/blocks.py`), the SQLite
+store (`app/store.py`), loader/solver baselines, and the web routes
+(calendar views, named schedules, shift setup, file storage).
 
 ---
 

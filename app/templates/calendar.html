@@ -1,14 +1,9 @@
 {% extends "base.html" %}
+{% from "_components.html" import calendar_entry, contact_link %}
 {% block title %}Calendar - Mu2e Shift Scheduler{% endblock %}
 
 {% block head %}
 <style>
-  .calendar-controls {
-    max-width: 720px;
-  }
-  .calendar-month {
-    margin-bottom: 2rem;
-  }
   .calendar-grid {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -35,8 +30,15 @@
     padding: .45rem;
     background: #fff;
   }
+  .calendar-grid.view-week .calendar-day {
+    min-height: 320px;
+  }
   .calendar-day.out-of-month {
     background: #f1f3f5;
+  }
+  .calendar-day.is-today {
+    outline: 2px solid #0d6efd;
+    outline-offset: -2px;
   }
   .calendar-date {
     color: #6c757d;
@@ -53,19 +55,19 @@
     font-size: .78rem;
     line-height: 1.25;
   }
-  .assignment-card.unassigned {
+  .assignment-card.empty-shift {
     border-left-color: #dc3545;
     background: #fff5f5;
   }
-  .assignment-card.not-preferred {
-    border-left-color: #6c757d;
+  .assignment-card.span-cont {
+    border-left-style: dashed;
   }
   .assignment-time {
     font-weight: 700;
     color: #212529;
   }
-  .assignment-person {
-    word-break: break-word;
+  .person-link {
+    text-decoration: none;
   }
   @media (max-width: 900px) {
     .calendar-grid {
@@ -79,144 +81,275 @@
 {% endblock %}
 
 {% block content %}
-<div class="d-flex align-items-start gap-3 mb-4 flex-wrap">
+<div class="d-flex align-items-start gap-3 mb-3 flex-wrap">
   <div class="me-auto">
     <h1 class="h3 mb-1">Calendar</h1>
-    <div class="text-muted small">
-      Schedules are loaded from <code>{{ csv_dir }}</code>; saved result files are loaded from <code>{{ data_dir }}</code>.
-    </div>
   </div>
-  <a href="{{ url_for('main.results') }}" class="btn btn-outline-secondary">Current Results</a>
+  {% if selected_schedule %}
+  <div class="btn-group">
+    <a href="{{ url_for('main.schedules_export_csv', schedule_id=selected_schedule.id) }}"
+       class="btn btn-outline-secondary btn-sm">Export shifts CSV</a>
+    <a href="{{ url_for('main.schedules_export_assignments', schedule_id=selected_schedule.id, fmt='csv') }}"
+       class="btn btn-outline-secondary btn-sm">Assignments CSV</a>
+    <a href="{{ url_for('main.schedules_export_assignments', schedule_id=selected_schedule.id, fmt='json') }}"
+       class="btn btn-outline-secondary btn-sm">Assignments JSON</a>
+  </div>
+  {% endif %}
 </div>
 
-{% if current_user.is_authenticated and current_user.is_admin %}
-<div class="card mb-4">
-  <div class="card-header fw-semibold">Update Schedule Calendar</div>
-  <div class="card-body">
-    <form method="post" action="{{ url_for('main.upload_calendar_schedule') }}" enctype="multipart/form-data" class="row g-3 align-items-end">
-      <div class="col-md">
-        <label for="schedule_file" class="form-label">Schedule CSV</label>
-        <input class="form-control" type="file" id="schedule_file" name="schedule_file" accept=".csv" required>
-        <div class="form-text">Uploads are added to <code>{{ csv_dir }}</code>.</div>
-      </div>
-      <div class="col-md-auto">
-        <button type="submit" class="btn btn-primary">Upload Schedule</button>
-      </div>
-    </form>
+{# Classification tabs + Files pseudo-tab #}
+<ul class="nav nav-tabs mb-3" role="tablist">
+  {% for t in tabs %}
+  <li class="nav-item">
+    <a class="nav-link {{ 'active' if t.slug == active_tab }}"
+       {% if t.slug == active_tab %}aria-current="page"{% endif %}
+       href="{{ url_for('main.calendar_view', tab=t.slug, view=view) }}">{{ t.name }}</a>
+  </li>
+  {% endfor %}
+  <li class="nav-item">
+    <a class="nav-link {{ 'active' if active_tab == '__files__' }}"
+       {% if active_tab == '__files__' %}aria-current="page"{% endif %}
+       href="{{ url_for('main.calendar_view', source=source or 'schedule', view=view) }}">Files</a>
+  </li>
+</ul>
+
+{% if preview %}
+<div class="alert alert-info d-flex align-items-center flex-wrap gap-2">
+  <div class="me-auto">
+    Previewing local file <code>{{ preview.filename }}</code> &mdash; not saved.
   </div>
+  {% if current_user.is_authenticated and current_user.is_admin %}
+  <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="collapse"
+          data-bs-target="#previewSaveForm">Save as schedule&hellip;</button>
+  {% endif %}
+  <form method="post" action="{{ url_for('main.calendar_preview_clear') }}" class="m-0">
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Dismiss</button>
+  </form>
+</div>
+{% if current_user.is_authenticated and current_user.is_admin %}
+<div class="collapse mb-3" id="previewSaveForm">
+  <form method="post" action="{{ url_for('main.schedules_save') }}" class="card card-body row g-2 flex-row align-items-end">
+    <input type="hidden" name="from_preview" value="1">
+    <div class="col-md-4">
+      <label class="form-label" for="previewName">Schedule name</label>
+      <input class="form-control" type="text" id="previewName" name="name" required>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label" for="previewClassification">Classification</label>
+      <select class="form-select" id="previewClassification" name="classification">
+        <option value="">(none)</option>
+        {% for t in tabs %}
+        <option value="{{ t.slug }}">{{ t.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-auto">
+      <button type="submit" class="btn btn-primary">Save schedule</button>
+    </div>
+  </form>
 </div>
 {% endif %}
+{% endif %}
 
-<div class="calendar-controls mb-4">
-  <div class="btn-group mb-3" role="group" aria-label="Calendar source">
-    <a href="{{ url_for('main.calendar_view', source='schedule') }}"
-       class="btn {{ 'btn-primary' if source == 'schedule' else 'btn-outline-primary' }}">
-      Schedule
-    </a>
-    <a href="{{ url_for('main.calendar_view', source='results') }}"
-       class="btn {{ 'btn-primary' if source != 'schedule' else 'btn-outline-primary' }}">
-      Results
-    </a>
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+  {# Prev / label+picker / next #}
+  <div class="btn-group" role="group" aria-label="Calendar navigation">
+    <a class="btn btn-outline-primary" href="{{ nav.prev_url }}" aria-label="Previous">&lsaquo;</a>
+    <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse"
+            data-bs-target="#monthPicker" aria-expanded="false">{{ nav.label }}</button>
+    <a class="btn btn-outline-primary" href="{{ nav.next_url }}" aria-label="Next">&rsaquo;</a>
   </div>
 
+  {# Today / Week / Month toggle #}
+  <div class="btn-group" role="group" aria-label="Calendar view">
+    {% for v, label in [('today', 'Today'), ('week', 'Week'), ('month', 'Month')] %}
+    <a class="btn {{ 'btn-primary' if view == v else 'btn-outline-primary' }}"
+       {% if view == v %}aria-current="true"{% endif %}
+       href="{{ url_for('main.calendar_view', view=v, date=nav.date,
+                        tab=(active_tab if active_tab not in ('', '__files__') else None),
+                        schedule=(selected_schedule.name if selected_schedule else legacy_csv or None),
+                        source=source or None, file=selected_file or None,
+                        preview=(1 if preview else None)) }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+
+  {% if active_tab != '__files__' and not preview %}
+  {# Named schedule selector for the active tab #}
+  <form method="get" action="{{ url_for('main.calendar_view') }}" class="d-flex gap-2 ms-auto">
+    <input type="hidden" name="tab" value="{{ active_tab }}">
+    <input type="hidden" name="view" value="{{ view }}">
+    <label class="visually-hidden" for="scheduleSelect">Schedule</label>
+    <select name="schedule" id="scheduleSelect" class="form-select form-select-sm" style="max-width: 320px;">
+      {% if not tab_schedules %}
+      <option value="">(no schedules in this classification)</option>
+      {% endif %}
+      {% for s in tab_schedules %}
+      <option value="{{ s.name }}" {{ 'selected' if selected_schedule and s.id == selected_schedule.id }}>
+        {{ s.name }}{{ ' ★ default' if s.id == default_schedule_id }} &mdash; {{ s.n_shifts }} shifts
+      </option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-sm btn-primary">Load</button>
+  </form>
+  {% endif %}
+
+  {# View a local file (transient preview) #}
+  <form method="post" action="{{ url_for('main.calendar_preview') }}" enctype="multipart/form-data"
+        class="d-flex gap-2 {{ '' if (active_tab != '__files__' and not preview) else 'ms-auto' }}">
+    <label class="visually-hidden" for="previewFile">Preview a local file</label>
+    <input class="form-control form-control-sm" type="file" id="previewFile" name="preview_file"
+           accept=".csv,.json" style="max-width: 260px;" required>
+    <button type="submit" class="btn btn-sm btn-outline-primary text-nowrap">View file</button>
+  </form>
+</div>
+
+{# Month/year picker (collapsed) #}
+<div class="collapse mb-3" id="monthPicker">
+  <form method="get" action="{{ url_for('main.calendar_view') }}" class="card card-body flex-row gap-2 align-items-end" style="max-width: 480px;">
+    {% if active_tab not in ('', '__files__') %}<input type="hidden" name="tab" value="{{ active_tab }}">{% endif %}
+    {% if selected_schedule %}<input type="hidden" name="schedule" value="{{ selected_schedule.name }}">{% endif %}
+    {% if source %}<input type="hidden" name="source" value="{{ source }}">
+    {% if legacy_csv %}<input type="hidden" name="schedule" value="{{ legacy_csv }}">{% endif %}
+    {% if selected_file %}<input type="hidden" name="file" value="{{ selected_file }}">{% endif %}
+    {% endif %}
+    <input type="hidden" name="view" value="{{ view }}">
+    <div>
+      <label class="form-label" for="pickMonth">Month</label>
+      <select class="form-select form-select-sm" id="pickMonth" name="month">
+        {% for m in range(1, 13) %}
+        <option value="{{ m }}" {{ 'selected' if m == nav.month }}>{{ m }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="form-label" for="pickYear">Year</label>
+      <input class="form-control form-control-sm" type="number" id="pickYear" name="year"
+             value="{{ nav.year }}" min="2000" max="2100">
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary">Go</button>
+    </div>
+  </form>
+</div>
+
+{% if active_tab == '__files__' and not preview %}
+{# Legacy file-based sources #}
+<div class="card card-body mb-3" style="max-width: 720px;">
+  <div class="btn-group mb-3" role="group" aria-label="Calendar file source">
+    <a href="{{ url_for('main.calendar_view', source='schedule', view=view) }}"
+       class="btn btn-sm {{ 'btn-primary' if source == 'schedule' else 'btn-outline-primary' }}">Schedule CSVs</a>
+    <a href="{{ url_for('main.calendar_view', source='results', view=view) }}"
+       class="btn btn-sm {{ 'btn-primary' if source == 'results' else 'btn-outline-primary' }}">Saved results</a>
+  </div>
   {% if source == 'schedule' %}
   <form method="get" action="{{ url_for('main.calendar_view') }}">
     <input type="hidden" name="source" value="schedule">
-    <label for="schedule" class="form-label fw-semibold">Schedule file</label>
-    <div class="input-group">
-      <select name="schedule" id="schedule" class="form-select">
+    <input type="hidden" name="view" value="{{ view }}">
+    <div class="input-group input-group-sm">
+      <select name="schedule" class="form-select" aria-label="Schedule file">
         {% for file in schedule_files %}
-        <option value="{{ file.name }}" {{ 'selected' if file.name == selected_schedule else '' }}>
+        <option value="{{ file.name }}" {{ 'selected' if file.name == legacy_csv }}>
           {{ file.name }} - {{ file.size }} bytes
         </option>
         {% endfor %}
       </select>
       <button type="submit" class="btn btn-primary">Load</button>
+      {% if legacy_csv %}
+      <a class="btn btn-outline-secondary"
+         href="{{ url_for('main.download_stored_file', dir='csv', name=legacy_csv) }}">Download</a>
+      {% endif %}
     </div>
   </form>
   {% else %}
   <form method="get" action="{{ url_for('main.calendar_view') }}">
     <input type="hidden" name="source" value="results">
-    <label for="file" class="form-label fw-semibold">Results file</label>
-    <div class="input-group">
-      <select name="file" id="file" class="form-select">
+    <input type="hidden" name="view" value="{{ view }}">
+    <div class="input-group input-group-sm">
+      <select name="file" class="form-select" aria-label="Results file">
         {% for file in result_files %}
-        <option value="{{ file.name }}" {{ 'selected' if file.name == selected_name else '' }}>
+        <option value="{{ file.name }}" {{ 'selected' if file.name == selected_file }}>
           {{ file.name }} - {{ file.n_shifts }} shifts - modified {{ file.modified }}
         </option>
         {% endfor %}
       </select>
       <button type="submit" class="btn btn-primary">Load</button>
+      {% if selected_file %}
+      <a class="btn btn-outline-secondary"
+         href="{{ url_for('main.download_stored_file', dir='data', name=selected_file) }}">Download</a>
+      {% endif %}
     </div>
   </form>
   {% endif %}
 </div>
+{% endif %}
 
-{% if source == 'schedule' and not schedule_files %}
-<div class="alert alert-info">
-  No schedule CSV files are available yet. Upload a schedule CSV to add it to the calendar.
-</div>
-{% elif source != 'schedule' and not result_files %}
-<div class="alert alert-info">
-  No saved result files are available yet. Run the scheduler, then use Save Results on the results page.
-</div>
-{% elif not months %}
-<div class="alert alert-warning">
-  {% if source == 'schedule' %}
-  The current schedule CSV does not contain shift dates in YYYY-MM-DD format.
+{% if selected_schedule %}
+<p class="text-muted small mb-3">
+  Schedule <strong>{{ selected_schedule.name }}</strong>
+  {% if selected_schedule.classification_name %}({{ selected_schedule.classification_name }}){% endif %}
+  &nbsp;&bull;&nbsp; updated {{ selected_schedule.updated_at[:16].replace('T', ' ') }}
+  {% if selected_schedule.id == default_schedule_id %}&nbsp;&bull;&nbsp;<span class="badge text-bg-primary">default</span>{% endif %}
+</p>
+{% endif %}
+
+{% if view == 'today' %}
+<div class="card" style="max-width: 720px;">
+  <div class="card-header fw-semibold">{{ agenda.label }}</div>
+  {% if agenda.day.entries %}
+  <ul class="list-group list-group-flush">
+    {% for entry in agenda.day.entries %}
+    <li class="list-group-item d-flex align-items-center gap-3">
+      <span class="text-nowrap fw-bold">{{ entry.start_time }}&ndash;{{ entry.end_time }}</span>
+      <span>
+        {{ entry.shift_name }}:
+        {% if entry.person %}{{ contact_link(entry.person) }}{% else %}<span class="text-muted">Empty</span>{% endif %}
+      </span>
+      {% if entry.span.is_multi %}
+      <span class="badge text-bg-light text-muted ms-auto">day {{ entry.span.day_index }} of {{ entry.span.total_days }}</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
   {% else %}
-  The selected results file does not contain shift dates in YYYY-MM-DD format.
+  <div class="card-body text-muted">No shifts scheduled today.</div>
   {% endif %}
 </div>
-{% else %}
-  {% if config_summary %}
-  <p class="text-muted small mb-4">
-    {{ assignments | length }} shifts
-    {% if config_summary.n_people %}&nbsp;&bull;&nbsp;{{ config_summary.n_people }} people{% endif %}
-    {% if config_summary.alpha is defined %}&nbsp;&bull;&nbsp;&alpha;: <strong>{{ config_summary.alpha }}</strong>{% endif %}
-  </p>
-  {% endif %}
-
-  {% for month in months %}
-  <section class="calendar-month">
-    <h2 class="h4 mb-3">{{ month.label }}</h2>
-    <div class="calendar-scroll">
-      <div class="calendar-grid">
+{% elif grid %}
+<section class="calendar-month">
+  <div class="calendar-scroll">
+    <div class="calendar-grid {{ 'view-week' if view == 'week' }}">
+      {% if view == 'week' %}
+        {% for day in grid.weeks[0] %}
+        <div class="calendar-header">{{ day.date.strftime('%a') }} {{ day.date.month }}/{{ day.date.day }}</div>
+        {% endfor %}
+      {% else %}
         {% for label in ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] %}
         <div class="calendar-header">{{ label }}</div>
         {% endfor %}
+      {% endif %}
 
-        {% for week in month.weeks %}
-          {% for day in week %}
-          <div class="calendar-day {{ '' if day.in_month else 'out-of-month' }}">
-            <div class="calendar-date">{{ day.date.day }}</div>
-            {% for a in day.shifts %}
-            <div class="assignment-card {{ 'unassigned' if a.person == 'UNASSIGNED' else ('not-preferred' if not a.is_preferred else '') }}">
-              <div class="assignment-time">{{ a.start_time }}-{{ a.end_time }}</div>
-              <div><code>{{ a.shift_id }}</code></div>
-              {% if a.date_end %}
-              <div class="text-muted">through {{ a.date_end }}</div>
-              {% endif %}
-              <div class="assignment-person">
-                {% if source == 'schedule' %}
-                {{ a.shift_type or a.block_type or 'Schedule block' }}
-                {% elif a.person == 'UNASSIGNED' %}
-                <span class="text-danger fw-semibold">UNASSIGNED</span>
-                {% else %}
-                {{ a.person }}
-                {% endif %}
-              </div>
-              {% if a.institution %}
-              <div class="text-muted">{{ a.institution }}</div>
-              {% endif %}
-            </div>
-            {% endfor %}
-          </div>
+      {% for week in grid.weeks %}
+        {% for day in week %}
+        <div class="calendar-day {{ '' if day.in_month else 'out-of-month' }} {{ 'is-today' if day.is_today }}">
+          <div class="calendar-date">{{ day.date.day }}</div>
+          {% for entry in day.entries %}
+          {{ calendar_entry(entry) }}
           {% endfor %}
+        </div>
         {% endfor %}
-      </div>
+      {% endfor %}
     </div>
-  </section>
-  {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if not preview and active_tab not in ('', '__files__') and not tab_schedules %}
+<div class="alert alert-info mt-3">
+  No schedules in this classification yet.
+  {% if current_user.is_authenticated and current_user.is_admin %}
+  Create one on the <a href="{{ url_for('admin.shift_setup') }}">Shift Setup</a> page or save one from the
+  <a href="{{ url_for('main.schedules_page') }}">Schedules</a> page.
+  {% endif %}
+</div>
 {% endif %}
 {% endblock %}
