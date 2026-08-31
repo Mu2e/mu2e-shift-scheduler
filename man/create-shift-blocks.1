@@ -1,0 +1,21 @@
+.TH CREATE-SHIFT-BLOCKS 1 "2026-08-31" "Mu2e Shift Scheduler v1.0.0" "Mu2e Shift Scheduler"
+.SH NAME
+create_shift_blocks.py \- interactively create a shift-block CSV
+.SH SYNOPSIS
+.B python scripts/create_shift_blocks.py
+[\fB\-o\fR \fICSV\fR]
+.SH DESCRIPTION
+Terminal predecessor of the web Shift Setup page. Prompts for a schedule name,
+date range, weekly blocks (name plus days of week), and shifts per day (name,
+start, stop), then writes a scheduler-compatible block CSV. Shares its
+date/slug logic with the web generator via
+.IR scheduler/blocks.py .
+For most uses prefer the web page at
+.IR /admin/shift\-setup ,
+which also supports daily/2-week/monthly repetition and per-shift weights.
+.SH OPTIONS
+.TP
+.BI \-o " CSV"
+Output path (default \fIsample_data/<schedule>_shift_blocks.csv\fR).
+.SH SEE ALSO
+.BR mu2e-shift-scheduler (1)

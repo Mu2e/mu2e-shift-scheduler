@@ -1,0 +1,42 @@
+.TH BOOTSTRAP 1 "2026-08-31" "Mu2e Shift Scheduler v1.0.0" "Mu2e Shift Scheduler"
+.SH NAME
+bootstrap.sh \- first-time setup for the Mu2e Shift Scheduler
+.SH SYNOPSIS
+.B ./bootstrap.sh
+[\fB\-\-admin\-password\fR \fIPASS\fR]
+[\fB\-\-no\-server\fR]
+[\fB\-\-no\-tests\fR]
+.SH DESCRIPTION
+Sets up the project from a fresh checkout: locates Python 3.10+, creates the
+.I venv/
+virtual environment, installs dependencies from
+.I requirements-dev.txt
+plus an editable install of the package (\fIpyproject.toml\fR), copies
+.I .env.example
+to
+.I .env
+if absent, runs the pytest suite, and starts the development server via
+.BR start-mu2e-shift-scheduler (1).
+Safe to run repeatedly. A PowerShell counterpart,
+.IR bootstrap.ps1 ,
+provides the same flow on Windows.
+.SH OPTIONS
+.TP
+.BI \-\-admin\-password " PASS"
+Seed the local admin account with this password
+(or set \fBMU2E_INITIAL_ADMIN_PASSWORD\fR).
+.TP
+.B \-\-no\-server
+Set up the environment but do not start the server.
+.TP
+.B \-\-no\-tests
+Skip running the test suite after setup.
+.SH EXAMPLES
+.nf
+    ./bootstrap.sh --admin-password letmein
+    ./bootstrap.sh --no-server --no-tests
+.fi
+.SH SEE ALSO
+.BR start-mu2e-shift-scheduler (1),
+.BR stop-mu2e-shift-scheduler (1),
+.BR deploy-okd (1)

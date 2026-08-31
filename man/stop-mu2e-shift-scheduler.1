@@ -1,0 +1,29 @@
+.TH STOP-MU2E-SHIFT-SCHEDULER 1 "2026-08-31" "Mu2e Shift Scheduler v1.0.0" "Mu2e Shift Scheduler"
+.SH NAME
+stop-mu2e-shift-scheduler \- gracefully stop the running Mu2e Shift Scheduler server
+.SH SYNOPSIS
+.B ./scripts/stop-mu2e-shift-scheduler
+[\fB\-\-tail\fR]
+.SH DESCRIPTION
+Stops the server started by
+.BR start-mu2e-shift-scheduler (1).
+Sends SIGTERM to the PID recorded in
+.IR scripts/.mu2e-shift-scheduler.pid ,
+waits up to 5 seconds for a clean exit, escalates to SIGKILL if needed, and
+removes the PID file. Stale solver temp files older than one hour
+(\fImu2e_sched_*\fR, \fImu2e_preview_*\fR, \fImu2e_staged_*\fR in the system
+temp directory) are also cleaned up.
+.SH OPTIONS
+.TP
+.B \-\-tail
+Print the last 20 lines of the server log before stopping.
+.SH FILES
+.TP
+.I scripts/.mu2e-shift-scheduler.pid
+PID of the running server.
+.TP
+.I scripts/logs/mu2e-shift-scheduler.log
+Server log.
+.SH SEE ALSO
+.BR start-mu2e-shift-scheduler (1),
+.BR bootstrap (1)

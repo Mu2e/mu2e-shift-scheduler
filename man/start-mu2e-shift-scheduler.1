@@ -1,0 +1,86 @@
+.TH START-MU2E-SHIFT-SCHEDULER 1 "2026-08-31" "Mu2e Shift Scheduler v1.0.0" "Mu2e Shift Scheduler"
+.SH NAME
+start-mu2e-shift-scheduler \- install dependencies and run the Mu2e Shift Scheduler server
+.SH SYNOPSIS
+.B ./scripts/start-mu2e-shift-scheduler
+[\fB\-\-admin\-password\fR \fIPASS\fR]
+[\fB\-\-admin\-email\fR \fIEMAIL\fR]
+[\fB\-\-host\fR \fIHOST\fR]
+[\fB\-\-port\fR \fIPORT\fR]
+[\fB\-\-prod\fR]
+[\fB\-\-debug\fR]
+[\fB\-\-no\-update\fR]
+[\fB\-\-tail\fR]
+.SH DESCRIPTION
+Starts the Mu2e Shift Scheduler web server. The script is safe to run
+repeatedly: it creates the virtual environment in
+.I venv/
+if missing, updates dependencies (from
+.I requirements-dev.txt
+plus an editable install of the package), seeds the local administrator
+account when a password is available, and restarts the server if one is
+already running.
+.PP
+Variables are loaded from
+.I .env
+in the project root; values already exported in the shell take precedence.
+Configuration precedence overall is: command line > environment > .env >
+defaults.
+.PP
+The server runs in the background. Its PID is written to
+.I scripts/.mu2e-shift-scheduler.pid
+and output is appended to
+.IR scripts/logs/mu2e-shift-scheduler.log .
+.SH OPTIONS
+.TP
+.BI \-\-admin\-password " PASS"
+Password for the local admin account (or set \fBMU2E_INITIAL_ADMIN_PASSWORD\fR).
+.TP
+.BI \-\-admin\-email " EMAIL"
+Email for the local admin account (default \fImu2e-admin@fnal.gov\fR).
+.TP
+.BI \-\-host " HOST"
+Bind address. Defaults to 127.0.0.1, or 0.0.0.0 with \fB\-\-prod\fR.
+.TP
+.BI \-\-port " PORT"
+Port to listen on (default 8001, or \fBMU2E_SCHEDULER_PORT\fR).
+.TP
+.B \-\-prod
+Serve with gunicorn (\fBGUNICORN_WORKERS\fR, \fBGUNICORN_TIMEOUT\fR honored)
+and production cookie settings: \fBSESSION_COOKIE_SECURE=1\fR,
+\fBSHOW_ADMIN_LOGIN=0\fR unless overridden.
+.TP
+.B \-\-debug
+Run the Flask development server with debug and auto-reload.
+.TP
+.B \-\-no\-update
+Skip pip dependency update checks.
+.TP
+.B \-\-tail
+Tail the server log after starting (Ctrl-C detaches; the server keeps running).
+.SH EXAMPLES
+First development start with a seeded admin:
+.PP
+.nf
+    ./scripts/start-mu2e-shift-scheduler --admin-password letmein
+.fi
+.PP
+Production-style serve on all interfaces:
+.PP
+.nf
+    ./scripts/start-mu2e-shift-scheduler --prod --port 8000
+.fi
+.SH FILES
+.TP
+.I scripts/.mu2e-shift-scheduler.pid
+PID of the running server.
+.TP
+.I scripts/logs/mu2e-shift-scheduler.log
+Server log.
+.TP
+.I .env
+Optional local configuration (see \fI.env.example\fR).
+.SH SEE ALSO
+.BR stop-mu2e-shift-scheduler (1),
+.BR bootstrap (1),
+.BR deploy-okd (1)

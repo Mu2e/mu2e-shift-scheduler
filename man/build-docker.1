@@ -1,0 +1,14 @@
+.TH BUILD-DOCKER 1 "2026-08-31" "Mu2e Shift Scheduler v1.0.0" "Mu2e Shift Scheduler"
+.SH NAME
+build-docker.sh \- build the Mu2e Shift Scheduler web Docker image
+.SH SYNOPSIS
+.B ./scripts/build-docker.sh
+.SH DESCRIPTION
+Builds the production container image from
+.I docker/web/Dockerfile
+(python:3.12-slim, non-root, gunicorn on port 8000). Used standalone for
+local image testing or implicitly by
+.BR deploy-okd (1).
+.SH SEE ALSO
+.BR deploy-okd (1),
+.BR run-docker-local (1)

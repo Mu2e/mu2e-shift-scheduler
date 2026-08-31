@@ -3,6 +3,9 @@ __pycache__/
 *.egg-info/
 venv/
 .venv/
+.env
+scripts/logs/
+scripts/.mu2e-shift-scheduler.pid
 *.swp
 .DS_Store
 *.csv
