@@ -106,3 +106,79 @@ def test_preference_submission_against_schedule(user_client, app):
     payload = json.loads(Path(app.config["PREFERENCES_JSON"]).read_text())
     assert payload[0]["name"] == "Alice"
     assert payload[0]["preferences"] == ["pref-day-1", "pref-night-1"]
+    assert payload[0]["schedule"] == "Pref Sched"
+
+
+def test_submission_writes_schedule_prefs_csv(user_client, app):
+    from scheduler.loader import load_people
+
+    with app.app_context():
+        sid, _ = store.upsert_schedule("Fall 2026", None, SCHEDULE_ROWS, source="upload")
+        store.set_preferences_schedule_id(sid)
+
+    user_client.post("/preferences/submit",
+                     data={"name": "Alice", "pref[]": ["pref-day-1", "pref-night-1"]})
+    user_client.post("/preferences/submit",
+                     data={"name": "Bob", "pref[]": ["pref-night-1"]})
+
+    prefs_csv = Path(app.config["CSV_DIR"]) / "fall-2026-prefs.csv"
+    assert prefs_csv.exists()
+    people = {p.name: p for p in load_people(str(prefs_csv))}
+    assert people["Alice"].preferences == ["pref-day-1", "pref-night-1"]
+    assert people["Bob"].preferences == ["pref-night-1"]
+
+    # Overwriting a submission (duplicate name -> confirm flow) refreshes the CSV
+    response = user_client.post(
+        "/preferences/submit",
+        data={"name": "Alice", "pref[]": ["pref-night-1"]},
+    )
+    assert b"overwrite" in response.data.lower()
+    user_client.post("/preferences/overwrite")
+    people = {p.name: p for p in load_people(str(prefs_csv))}
+    assert people["Alice"].preferences == ["pref-night-1"]
+    assert len(people) == 2
+
+
+def test_prefs_csv_is_per_schedule(user_client, admin_client, app):
+    with app.app_context():
+        sid_a, _ = store.upsert_schedule("Sched A", None, SCHEDULE_ROWS, source="upload")
+        sid_b, _ = store.upsert_schedule(
+            "Sched B", None,
+            [dict(SCHEDULE_ROWS[0], shift_id="b-day-1")], source="upload",
+        )
+        store.set_preferences_schedule_id(sid_a)
+    user_client.post("/preferences/submit",
+                     data={"name": "Alice", "pref[]": ["pref-day-1"]})
+    with app.app_context():
+        store.set_preferences_schedule_id(sid_b)
+    user_client.post("/preferences/submit",
+                     data={"name": "Bob", "pref[]": ["b-day-1"]})
+
+    csv_dir = Path(app.config["CSV_DIR"])
+    a_text = (csv_dir / "sched-a-prefs.csv").read_text()
+    b_text = (csv_dir / "sched-b-prefs.csv").read_text()
+    assert "Alice" in a_text and "Bob" not in a_text
+    assert "Bob" in b_text and "Alice" not in b_text
+
+
+def test_legacy_mode_writes_no_prefs_csv(user_client, app):
+    _write_legacy_csv(app)
+    user_client.post("/preferences/submit",
+                     data={"name": "Alice", "pref[]": ["legacy-1"]})
+    assert not list(Path(app.config["CSV_DIR"]).glob("*-prefs.csv"))
+
+
+def test_prefs_csv_hidden_from_schedule_pickers(user_client, admin_client, app):
+    with app.app_context():
+        sid, _ = store.upsert_schedule("Fall 2026", None, SCHEDULE_ROWS, source="upload")
+        store.set_preferences_schedule_id(sid)
+    user_client.post("/preferences/submit",
+                     data={"name": "Alice", "pref[]": ["pref-day-1"]})
+    # Not offered as a calendar schedule CSV or an unimported schedule...
+    html = admin_client.get("/calendar?source=schedule").get_data(as_text=True)
+    assert "fall-2026-prefs.csv" not in html
+    html = admin_client.get("/schedules").get_data(as_text=True)
+    assert "fall-2026-prefs.csv" not in html
+    # ...but browsable/downloadable via the files API for the solver's people picker
+    names = [f["name"] for f in admin_client.get("/api/files?dir=csv").get_json()["files"]]
+    assert "fall-2026-prefs.csv" in names

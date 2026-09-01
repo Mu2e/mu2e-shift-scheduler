@@ -4,7 +4,13 @@ Flask blueprint for collecting shift preferences from experiment participants.
 Configuration (set on the Flask app):
     PREFERENCES_SHIFTS_CSV   Path to the shifts CSV file (required).
     PREFERENCES_JSON         Path to the output JSON file (default: preferences.json).
+
+When an admin has selected a preference-collection schedule, every submission
+is tagged with the schedule name and the current per-person rankings are also
+written server-side as a solver-ready people CSV named
+``<schedule-slug>-prefs.csv`` in CSV_DIR.
 """
+import csv
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -73,11 +79,12 @@ def _find_existing_index(submissions: list, name: str) -> int:
     return -1
 
 
-def _build_entry(name: str, preferences: list[str]) -> dict:
+def _build_entry(name: str, preferences: list[str], schedule_name: str = "") -> dict:
     return {
         "name": name.strip(),
         "submitted_at": datetime.now(timezone.utc).isoformat(),
         "preferences": preferences,
+        "schedule": schedule_name.strip(),
     }
 
 
@@ -88,22 +95,77 @@ def _write_submissions(submissions: list) -> None:
         json.dump(submissions, f, indent=2)
 
 
-def _save_submission(name: str, preferences: list[str]) -> None:
+def _save_submission(name: str, preferences: list[str], schedule_name: str = "") -> None:
     submissions = _load_submissions()
-    submissions.append(_build_entry(name, preferences))
+    submissions.append(_build_entry(name, preferences, schedule_name))
     _write_submissions(submissions)
 
 
-def _overwrite_submission(name: str, preferences: list[str]) -> None:
+def _overwrite_submission(name: str, preferences: list[str], schedule_name: str = "") -> None:
     """Replace the existing entry for *name* in-place; append if not found."""
     submissions = _load_submissions()
     idx = _find_existing_index(submissions, name)
-    entry = _build_entry(name, preferences)
+    entry = _build_entry(name, preferences, schedule_name)
     if idx >= 0:
         submissions[idx] = entry
     else:
         submissions.append(entry)
     _write_submissions(submissions)
+
+
+def _current_preferences_schedule() -> dict | None:
+    schedule_id = store.get_preferences_schedule_id()
+    if schedule_id:
+        return store.get_schedule(schedule_id)
+    return None
+
+
+def _prefs_csv_path(schedule: dict) -> Path:
+    csv_dir = Path(current_app.config.get("CSV_DIR", "csv"))
+    return csv_dir / f"{schedule['slug']}-prefs.csv"
+
+
+def _write_schedule_prefs_csv(schedule: dict) -> Path:
+    """Regenerate the solver-ready people CSV for one schedule's submissions.
+
+    Includes the most recent submission per person among entries tagged with
+    the schedule's name. Format matches json_to_people_csv.py:
+    name, pref_1..pref_N (rows padded so the loader never sees missing cells).
+    """
+    key = schedule["name"].strip().lower()
+    latest: dict[str, dict] = {}
+    for sub in _load_submissions():
+        if str(sub.get("schedule", "")).strip().lower() != key:
+            continue
+        person = sub["name"].strip().lower()
+        if person not in latest or sub["submitted_at"] > latest[person]["submitted_at"]:
+            latest[person] = sub
+    subs = sorted(latest.values(), key=lambda s: s["name"].strip().lower())
+
+    max_prefs = max((len(s["preferences"]) for s in subs), default=0)
+    header = ["name"] + [f"pref_{i + 1}" for i in range(max_prefs)]
+    path = _prefs_csv_path(schedule)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        for sub in subs:
+            prefs = list(sub["preferences"])
+            writer.writerow([sub["name"].strip()] + prefs + [""] * (max_prefs - len(prefs)))
+    return path
+
+
+def _record_submission(name: str, preferences: list[str], overwrite: bool) -> None:
+    """Persist one submission to the JSON log and, when collecting for a named
+    schedule, refresh that schedule's server-side <slug>-prefs.csv file."""
+    schedule = _current_preferences_schedule()
+    schedule_name = schedule["name"] if schedule else ""
+    if overwrite:
+        _overwrite_submission(name, preferences, schedule_name)
+    else:
+        _save_submission(name, preferences, schedule_name)
+    if schedule:
+        _write_schedule_prefs_csv(schedule)
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +219,7 @@ def submit():
                 new_preferences=preferences,
             )
 
-        _save_submission(name, preferences)
+        _record_submission(name, preferences, overwrite=False)
     except Exception as exc:
         flash(f"Error saving preferences: {exc}", "danger")
         return redirect(url_for("preferences.index"))
@@ -173,7 +235,7 @@ def overwrite():
         return redirect(url_for("preferences.index"))
 
     try:
-        _overwrite_submission(pending["name"], pending["preferences"])
+        _record_submission(pending["name"], pending["preferences"], overwrite=True)
     except Exception as exc:
         flash(f"Error saving preferences: {exc}", "danger")
         return redirect(url_for("preferences.index"))
@@ -210,11 +272,13 @@ def current():
     except Exception:
         shift_map = {}
 
+    schedule = _current_preferences_schedule()
     return render_template(
         "preferences/current.html",
         submissions=current_submissions,
         shift_map=shift_map,
         json_path=str(_json_path().resolve()),
+        prefs_csv_name=_prefs_csv_path(schedule).name if schedule else "",
     )
 
 
@@ -233,9 +297,11 @@ def submissions():
     except Exception:
         shift_map = {}
 
+    schedule = _current_preferences_schedule()
     return render_template(
         "preferences/submissions.html",
         submissions=all_submissions,
         shift_map=shift_map,
         json_path=str(_json_path().resolve()),
+        prefs_csv_name=_prefs_csv_path(schedule).name if schedule else "",
     )

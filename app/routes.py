@@ -136,7 +136,8 @@ def _list_csv_files(csv_dir: Path) -> list[dict]:
         return []
     files = []
     for path in sorted(csv_dir.glob("*.csv"), key=lambda p: p.name.lower()):
-        if path.is_file():
+        # *-prefs.csv are people/preference files, not shift schedules.
+        if path.is_file() and not path.name.endswith("-prefs.csv"):
             files.append({
                 "name": path.name,
                 "path": str(path),
