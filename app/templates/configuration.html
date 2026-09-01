@@ -65,6 +65,34 @@
     </div>
 
     <div class="card mb-4">
+      <div class="card-header fw-semibold">Preference collection schedule</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('admin.settings') }}" class="d-flex gap-2 align-items-end flex-wrap">
+          <input type="hidden" name="form_name" value="preferences_schedule">
+          <div>
+            <label class="form-label" for="preferencesSchedule">
+              Schedule collaborators submit preferences for
+            </label>
+            <select class="form-select" id="preferencesSchedule" name="preferences_schedule_id" style="min-width: 320px;">
+              <option value="">(legacy preference shifts CSV)</option>
+              {% for s in schedules %}
+              <option value="{{ s.id }}" {{ 'selected' if s.id == preferences_schedule_id }}>
+                {{ s.name }}{% if s.classification_name %} — {{ s.classification_name }}{% endif %}
+                ({{ s.n_shifts }} shifts)
+              </option>
+              {% endfor %}
+            </select>
+            <div class="form-text">
+              The Submit Preferences page lists exactly this schedule's shifts.
+              With no selection it falls back to <code>{{ preferences_path }}</code>.
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mb-4">
       <div class="card-header fw-semibold">Upload CSV</div>
       <div class="card-body">
         <form method="post" action="{{ url_for('main.configuration') }}" enctype="multipart/form-data">

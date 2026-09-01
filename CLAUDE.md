@@ -34,7 +34,9 @@ Configuration precedence: command line > environment > `.env` > `config/config.y
   block-CSV serialization), `exporter.py` (CSV/JSON export, stats).
 - `app/` — Flask blueprints: `routes.py` (calendar, named schedules, solve,
   results, files API), `admin_routes.py` (`/admin`: shift setup, taxonomy,
-  settings), `preferences.py`, `auth_routes.py` + `auth.py` (flask-login,
+  settings), `preferences.py` (collects preferences for the admin-selected
+  stored schedule — `settings.preferences_schedule_id` — falling back to the
+  legacy `PREFERENCES_SHIFTS_CSV` file when unset), `auth_routes.py` + `auth.py` (flask-login,
   Fermilab OIDC, stdlib-sqlite3 users DB, global login requirement),
   `store.py` (ALL app SQLite persistence — schedules, shifts, assignments,
   classifications, settings, contacts; WAL; single-replica constraint),

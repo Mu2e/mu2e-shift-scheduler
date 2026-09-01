@@ -24,6 +24,7 @@ from scheduler.loader import Shift, _default_points
 DEFAULT_CLASSIFICATIONS = ["General Shifts", "Run Coordinators", "Oncall DAQ Experts"]
 
 SETTING_DEFAULT_SCHEDULE = "default_schedule_id"
+SETTING_PREFERENCES_SCHEDULE = "preferences_schedule_id"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -524,6 +525,18 @@ def get_default_schedule_id() -> int | None:
 
 def set_default_schedule_id(schedule_id: int | None) -> None:
     set_setting(SETTING_DEFAULT_SCHEDULE, str(schedule_id) if schedule_id else "")
+
+
+def get_preferences_schedule_id() -> int | None:
+    value = get_setting(SETTING_PREFERENCES_SCHEDULE)
+    try:
+        return int(value) if value else None
+    except ValueError:
+        return None
+
+
+def set_preferences_schedule_id(schedule_id: int | None) -> None:
+    set_setting(SETTING_PREFERENCES_SCHEDULE, str(schedule_id) if schedule_id else "")
 
 
 # ---------------------------------------------------------------------------

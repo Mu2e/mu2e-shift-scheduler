@@ -123,6 +123,15 @@
 <div class="row justify-content-center">
   <div class="col-lg-10">
     <h2 class="mb-1">Submit Shift Preferences</h2>
+    {% if preferences_schedule %}
+    <p class="mb-1">
+      Collecting preferences for schedule
+      <strong>{{ preferences_schedule.name }}</strong>
+      {%- if preferences_schedule.classification_name %}
+      <span class="badge text-bg-secondary ms-1">{{ preferences_schedule.classification_name }}</span>
+      {%- endif %}
+    </p>
+    {% endif %}
     <p class="text-muted mb-4">
       Select shifts you would like to work and arrange them in your preferred order (top = most preferred).
       You do not need to rank every shift — only the ones you would like to work.

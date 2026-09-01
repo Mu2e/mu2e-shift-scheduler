@@ -292,6 +292,22 @@ def settings():
         else:
             store.set_default_schedule_id(None)
             flash("Default calendar cleared.", "success")
+    elif request.form.get("form_name") == "preferences_schedule":
+        raw = request.form.get("preferences_schedule_id", "").strip()
+        if raw:
+            try:
+                schedule_id = int(raw)
+            except ValueError:
+                schedule_id = None
+            if schedule_id and store.get_schedule(schedule_id):
+                store.set_preferences_schedule_id(schedule_id)
+                schedule = store.get_schedule(schedule_id)
+                flash(f"Preferences are now collected for schedule '{schedule['name']}'.", "success")
+            else:
+                flash("Choose a valid schedule.", "danger")
+        else:
+            store.set_preferences_schedule_id(None)
+            flash("Preference schedule cleared — the legacy preference shifts CSV will be used.", "success")
     else:
         flash("Unknown settings form.", "danger")
     return redirect(url_for("main.configuration"))
