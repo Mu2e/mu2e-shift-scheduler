@@ -1,14 +1,39 @@
 # Mu2e Shift Scheduler
 
+This is a simple tool for scheduling shifts on the Mu2e experiment.  I based it
+off of our experiences on NOvA with doing similar types of shift scheduling and
+in particular trying to handle scheduling regular shifts and expert on-call shifts.
+
+The tool is broken down into a couple parts.
+
+1. A Calendar (it shows who is on shift and who will be on shift)
+2. A tool for "defining" what a shift is (i.e. time range, date range etc...)
+3. A tool for letting people enter their preference for when they want to be on shift
+4. And optimizer which take the schedule and people's preferences and compute a solution
+
+This is NOT the Gary Feldman scheduler!!!!  (Gary is great but OMG I don't want to
+deal with how he Monte Carlo's things). Instead it's a simple multi-pass linear optimization
+problem.  Does it work?  Yeah....Mostly....in fact if the pool of people and the shifts they
+select are reasonable, it does a great job.  If people don't select enough shifts so that 
+there are holes in the calendar's coverage...well it doesn't do as well (but it does find
+a solution!)
+
+So more formally what you are looking at is:
+
 A shift scheduling tool for the Mu2e experiment at Fermilab. It takes a set of
 defined shifts (arbitrary time blocks) and a list of people with ranked
 preferences, then finds an optimal assignment using integer linear programming.
 Constraints such as per-person shift-point targets, minimums, maximums, and a
-fairness/preference tradeoff weight are all configurable.
+fairness/preference tradeoff weight are all configurable (and yes it does have weighting
+and preferences)
 
 The tool includes a web interface for participants to submit preferences, and
 for coordinators to run and review the schedule.  All data is stored in
-human-readable CSV and JSON formats.
+human-readable CSV and JSON formats.  Which can be saved/exported, and there
+are commandline tools for doing certain things (like a crazy large solve).
+
+The whole thing is deploy-able via a container, and we are currently running
+a production version on the FNAL OKD cluster (talk to Andrew for details)
 
 ## Getting Started
 
