@@ -63,6 +63,11 @@ def create_app(
     )
     app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE", "0") == "1"
     app.config["SHOW_ADMIN_LOGIN"] = os.environ.get("SHOW_ADMIN_LOGIN", "0") == "1"
+    # Outgoing reminder email (SMTP_HOST empty disables sending)
+    app.config["SMTP_HOST"] = os.environ.get("SMTP_HOST", "").strip()
+    app.config["SMTP_PORT"] = int(os.environ.get("SMTP_PORT", "25"))
+    app.config["SMTP_FROM"] = os.environ.get("SMTP_FROM", "mu2e-shifts@fnal.gov").strip()
+    app.config["SMTP_STARTTLS"] = os.environ.get("SMTP_STARTTLS", "0") == "1"
 
     from .routes import bp
     app.register_blueprint(bp)

@@ -11,6 +11,15 @@ auth:
   initialAdminEmail: mu2e-admin@fnal.gov
   initialAdminPassword: "<set-a-local-admin-password>"
 
+# Outgoing reminder email. Fermilab's internal relay accepts mail from
+# on-site/OKD sources on port 25 without auth or TLS. Leave host "" to
+# disable sending.
+smtp:
+  host: "smtp.fnal.gov"
+  port: "25"
+  from: mu2e-shifts@fnal.gov
+  starttls: "0"
+
 oidc:
   providerUrl: "https://<fermilab-oidc-provider>/.well-known/openid-configuration"
   clientId: "<oidc-client-id>"
