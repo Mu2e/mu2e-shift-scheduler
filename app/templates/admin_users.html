@@ -20,6 +20,7 @@
             <th>Email</th>
             <th>Name</th>
             <th>Provider</th>
+            <th style="min-width: 280px;">Contact</th>
             <th>Last Login</th>
             <th style="width: 220px;">Role</th>
           </tr>
@@ -40,6 +41,20 @@
               {% else %}
               <span class="badge bg-primary">SSO</span>
               {% endif %}
+            </td>
+            <td>
+              <form method="post" action="{{ url_for('auth.update_contact', user_id=user.id) }}"
+                    class="d-flex gap-1 align-items-center">
+                <label class="visually-hidden" for="phone{{ user.id }}">Phone for {{ user.email }}</label>
+                <input type="tel" class="form-control form-control-sm" style="max-width: 130px;"
+                       id="phone{{ user.id }}" name="phone" value="{{ user.phone or '' }}"
+                       placeholder="Phone">
+                <label class="visually-hidden" for="inst{{ user.id }}">Institution for {{ user.email }}</label>
+                <input type="text" class="form-control form-control-sm" style="max-width: 150px;"
+                       id="inst{{ user.id }}" name="institution" value="{{ user.institution or '' }}"
+                       placeholder="Institution">
+                <button type="submit" class="btn btn-sm btn-outline-primary">Save</button>
+              </form>
             </td>
             <td class="text-muted small">{{ user.last_login_at or "Never" }}</td>
             <td>
