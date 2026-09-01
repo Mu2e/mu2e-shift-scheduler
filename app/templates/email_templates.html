@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Email Templates — Mu2e Shift Scheduler{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+    <div class="d-flex align-items-start flex-wrap gap-2 mb-1">
+      <h2 class="mb-0 me-auto">Reminder Email Templates</h2>
+      <a href="{{ url_for('admin.reminders') }}" class="btn btn-outline-primary">Send Reminders</a>
+    </div>
+    <p class="text-muted mb-2">
+      One template per schedule classification; the template bound to a
+      schedule's classification is used for its reminders.
+    </p>
+    {% if not smtp_configured %}
+    <div class="alert alert-warning">
+      SMTP is not configured (<code>SMTP_HOST</code> is unset) — templates can be
+      edited but no email can be sent from this instance.
+    </div>
+    {% endif %}
+    <p class="text-muted small">
+      Placeholders:
+      {% for field in template_fields %}<code>{{ '{' ~ field ~ '}' }}</code>{{ ' ' }}{% endfor %}
+      &mdash; <code>{{ '{date_end_suffix}' }}</code> renders as
+      &ldquo;&nbsp;through&nbsp;YYYY-MM-DD&rdquo; only for multi-day blocks.
+    </p>
+
+    {% for t in templates %}
+    <div class="card mb-3">
+      <div class="card-header fw-semibold d-flex align-items-center">
+        {{ t.name }}
+        {% if t.classification_name %}
+        <span class="badge text-bg-secondary ms-2">{{ t.classification_name }}</span>
+        {% endif %}
+        <form method="post" action="{{ url_for('admin.email_templates') }}" class="ms-auto"
+              onsubmit="return confirm('Delete template {{ t.name }}?');">
+          <input type="hidden" name="action" value="delete">
+          <input type="hidden" name="template_id" value="{{ t.id }}">
+          <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+        </form>
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('admin.email_templates') }}" class="row g-3">
+          <input type="hidden" name="action" value="save">
+          <input type="hidden" name="template_id" value="{{ t.id }}">
+          <div class="col-md-8">
+            <label class="form-label" for="subject{{ t.id }}">Subject</label>
+            <input class="form-control" type="text" id="subject{{ t.id }}" name="subject"
+                   value="{{ t.subject }}" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="class{{ t.id }}">Used for classification</label>
+            <select class="form-select" id="class{{ t.id }}" name="classification_id">
+              <option value="">(fallback only)</option>
+              {% for c in classifications %}
+              <option value="{{ c.id }}" {{ 'selected' if c.id == t.classification_id }}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="body{{ t.id }}">Body</label>
+            <textarea class="form-control font-monospace" id="body{{ t.id }}" name="body"
+                      rows="12" style="font-size: .85rem;">{{ t.body }}</textarea>
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-primary btn-sm">Save template</button>
+            <span class="text-muted small ms-2">updated {{ t.updated_at[:16].replace('T', ' ') }}</span>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+
+    <div class="card">
+      <div class="card-body">
+        <form method="post" action="{{ url_for('admin.email_templates') }}" class="d-flex gap-2">
+          <input type="hidden" name="action" value="create">
+          <label class="visually-hidden" for="newTemplateName">New template name</label>
+          <input class="form-control" type="text" id="newTemplateName" name="name"
+                 placeholder="New template name" required>
+          <button type="submit" class="btn btn-primary text-nowrap">Add template</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

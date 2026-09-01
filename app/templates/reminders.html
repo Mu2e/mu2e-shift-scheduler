@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Send Reminders — Mu2e Shift Scheduler{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-10">
+    <div class="d-flex align-items-start flex-wrap gap-2 mb-1">
+      <h2 class="mb-0 me-auto">Send Shift Reminders</h2>
+      <a href="{{ url_for('admin.email_templates') }}" class="btn btn-outline-primary">Email Templates</a>
+    </div>
+    <p class="text-muted mb-3">
+      Assigned shifts starting within the look-ahead window. Reminders go to
+      the email registered on each person's account (contacts as fallback).
+    </p>
+
+    {% if not smtp_configured %}
+    <div class="alert alert-warning">
+      SMTP is not configured (<code>SMTP_HOST</code> is unset) — sending is disabled
+      on this instance.
+    </div>
+    {% endif %}
+
+    <form method="get" action="{{ url_for('admin.reminders') }}" class="d-flex gap-2 align-items-end mb-3">
+      <div>
+        <label class="form-label" for="days">Look-ahead window (days)</label>
+        <input class="form-control" type="number" id="days" name="days" min="0" max="365"
+               value="{{ days }}" style="max-width: 140px;">
+      </div>
+      <button type="submit" class="btn btn-outline-primary">Update</button>
+      <div class="form-text mb-2">The window is remembered as the default.</div>
+    </form>
+
+    <form method="post" action="{{ url_for('admin.reminders') }}">
+      <input type="hidden" name="action" value="send">
+      <input type="hidden" name="days" value="{{ days }}">
+      <div class="card mb-3">
+        <div class="card-header fw-semibold">
+          Upcoming assigned shifts — next {{ days }} day(s): {{ rows | length }}
+        </div>
+        {% if rows %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th style="width: 2rem;">
+                  <input class="form-check-input" type="checkbox" id="checkAll" checked
+                         aria-label="Select all">
+                </th>
+                <th>Date</th><th>Shift</th><th>Schedule</th><th>Person</th>
+                <th>Email</th><th>Template</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in rows %}
+              <tr class="{{ 'table-warning' if not r.email }}">
+                <td>
+                  <input class="form-check-input row-check" type="checkbox" name="selected[]"
+                         value="{{ r.schedule_id }}|{{ r.shift_id }}"
+                         {{ 'checked' if r.email }} {{ 'disabled' if not r.email }}
+                         aria-label="Send to {{ r.person }}">
+                </td>
+                <td class="text-nowrap">{{ r.date }}{% if r.date_end and r.date_end != r.date %}&ndash;{{ r.date_end }}{% endif %}</td>
+                <td>{{ r.shift_name or r.shift_id }} <span class="text-muted small">{{ r.start_time }}&ndash;{{ r.end_time }}</span></td>
+                <td>{{ r.schedule_name }}</td>
+                <td>{{ r.person }}</td>
+                <td>
+                  {% if r.email %}<code>{{ r.email }}</code>
+                  {% else %}<span class="text-danger small">no known address</span>{% endif %}
+                </td>
+                <td class="text-muted small">{{ r.template_name or '—' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="card-body border-top">
+          <button type="submit" class="btn btn-primary" {{ 'disabled' if not smtp_configured }}
+                  onclick="return confirm('Send reminder emails to the selected people?');">
+            Send selected reminders
+          </button>
+        </div>
+        {% else %}
+        <div class="card-body text-muted">No assigned shifts start in this window.</div>
+        {% endif %}
+      </div>
+    </form>
+
+    <div class="card">
+      <div class="card-header fw-semibold">Recent reminder emails</div>
+      {% if email_log %}
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>When (UTC)</th><th>To</th><th>Person</th><th>Shift</th><th>By</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for e in email_log %}
+            <tr>
+              <td class="text-nowrap small">{{ e.sent_at[:16].replace('T', ' ') }}</td>
+              <td><code>{{ e.recipient }}</code></td>
+              <td>{{ e.person }}</td>
+              <td class="small">{{ e.shift_id }}</td>
+              <td class="small text-muted">{{ e.sent_by }}</td>
+              <td>
+                {% if e.status == 'sent' %}<span class="badge text-bg-success">sent</span>
+                {% else %}<span class="badge text-bg-danger" title="{{ e.status }}">failed</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="card-body text-muted">No reminders have been sent yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var checkAll = document.getElementById("checkAll");
+  if (checkAll) {
+    checkAll.addEventListener("change", function () {
+      document.querySelectorAll(".row-check:not(:disabled)").forEach(function (box) {
+        box.checked = checkAll.checked;
+      });
+    });
+  }
+</script>
+{% endblock %}

@@ -101,7 +101,108 @@ CREATE TABLE IF NOT EXISTS contacts (
     institution TEXT NOT NULL DEFAULT '',
     updated_at  TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS email_templates (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    name              TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    classification_id INTEGER REFERENCES classifications(id) ON DELETE SET NULL,
+    subject           TEXT NOT NULL DEFAULT '',
+    body              TEXT NOT NULL DEFAULT '',
+    updated_at        TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS email_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    sent_at     TEXT NOT NULL,
+    recipient   TEXT NOT NULL,
+    person      TEXT NOT NULL DEFAULT '',
+    subject     TEXT NOT NULL DEFAULT '',
+    schedule_id INTEGER,
+    shift_id    TEXT NOT NULL DEFAULT '',
+    sent_by     TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'sent'
+);
 """
+
+# Draft reminder templates seeded on first start. Placeholders use Python
+# str.format field names; unknown fields render as empty strings.
+DEFAULT_EMAIL_TEMPLATES = [
+    {
+        "name": "General Shifts",
+        "subject": "Mu2e shift reminder: {shift_name} on {date}",
+        "body": (
+            "Dear {name},\n"
+            "\n"
+            "This is a reminder that you are scheduled for an upcoming Mu2e "
+            "control-room shift:\n"
+            "\n"
+            "    Schedule:  {schedule}\n"
+            "    Shift:     {shift_name}\n"
+            "    Dates:     {date}{date_end_suffix}\n"
+            "    Time:      {start_time}-{end_time}\n"
+            "\n"
+            "Please arrive in the control room about 15 minutes before your "
+            "shift for the handoff, review the current run plan and checklist, "
+            "and make sure your control-room account works before your first "
+            "shift of the block. If you cannot take this shift, arrange a swap "
+            "and notify the run coordinator as soon as possible.\n"
+            "\n"
+            "The full calendar is available at https://mu2e-shifts.fnal.gov/\n"
+            "\n"
+            "Thank you for supporting Mu2e operations.\n"
+        ),
+    },
+    {
+        "name": "Run Coordinators",
+        "subject": "Mu2e run coordinator reminder: week of {date}",
+        "body": (
+            "Dear {name},\n"
+            "\n"
+            "This is a reminder that you are the scheduled Mu2e run "
+            "coordinator:\n"
+            "\n"
+            "    Schedule:  {schedule}\n"
+            "    Role:      {shift_name}\n"
+            "    Dates:     {date}{date_end_suffix}\n"
+            "\n"
+            "As run coordinator you are expected to chair the daily operations "
+            "meeting, review the shift schedule and logbook each day, "
+            "coordinate accesses and expert interventions, and prepare the "
+            "handoff summary for the next coordinator. Please confirm you have "
+            "current contact info for the on-call experts before your period "
+            "begins.\n"
+            "\n"
+            "The full calendar is available at https://mu2e-shifts.fnal.gov/\n"
+            "\n"
+            "Thank you for supporting Mu2e operations.\n"
+        ),
+    },
+    {
+        "name": "Oncall DAQ Experts",
+        "subject": "Mu2e on-call DAQ expert reminder: {date}{date_end_suffix}",
+        "body": (
+            "Dear {name},\n"
+            "\n"
+            "This is a reminder that you are the scheduled on-call DAQ expert "
+            "for Mu2e:\n"
+            "\n"
+            "    Schedule:  {schedule}\n"
+            "    Role:      {shift_name}\n"
+            "    Dates:     {date}{date_end_suffix}\n"
+            "\n"
+            "While on call you should be reachable by phone, able to connect "
+            "to the DAQ cluster remotely within about 30 minutes, and prepared "
+            "to respond to calls from the control room at any hour. Please "
+            "verify your remote access (VPN, gateway, and DAQ node logins) and "
+            "your contact info on your profile page before the on-call period "
+            "starts.\n"
+            "\n"
+            "The full calendar is available at https://mu2e-shifts.fnal.gov/\n"
+            "\n"
+            "Thank you for supporting Mu2e operations.\n"
+        ),
+    },
+]
 
 
 def _utcnow() -> str:
@@ -139,6 +240,23 @@ def init_app_db(app) -> None:
                 VALUES (?, ?, 1, ?, ?, ?)
                 """,
                 (name, slugify(name), order, now, now),
+            )
+        for template in DEFAULT_EMAIL_TEMPLATES:
+            classification = conn.execute(
+                "SELECT id FROM classifications WHERE name = ?", (template["name"],)
+            ).fetchone()
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO email_templates (name, classification_id, subject, body, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    template["name"],
+                    classification["id"] if classification else None,
+                    template["subject"],
+                    template["body"],
+                    now,
+                ),
             )
     # Context-manager commit only wraps transactions; close explicitly.
 
@@ -540,6 +658,146 @@ def get_assignments(schedule_id: int) -> dict[str, dict]:
             "SELECT * FROM assignments WHERE schedule_id = ?", (schedule_id,)
         ).fetchall()
     return {row["shift_id"]: dict(row) for row in rows}
+
+
+# ---------------------------------------------------------------------------
+# Email templates, reminder queries, send log
+# ---------------------------------------------------------------------------
+
+def list_email_templates() -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT t.*, c.name AS classification_name
+              FROM email_templates t
+              LEFT JOIN classifications c ON c.id = t.classification_id
+             ORDER BY t.name COLLATE NOCASE
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_email_template(template_id: int) -> dict | None:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM email_templates WHERE id = ?", (template_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def template_for_classification(classification_id: int | None) -> dict | None:
+    """Template bound to the classification, else the first template."""
+    with connect() as conn:
+        row = None
+        if classification_id is not None:
+            row = conn.execute(
+                "SELECT * FROM email_templates WHERE classification_id = ?",
+                (classification_id,),
+            ).fetchone()
+        if row is None:
+            row = conn.execute(
+                "SELECT * FROM email_templates ORDER BY name COLLATE NOCASE LIMIT 1"
+            ).fetchone()
+    return dict(row) if row else None
+
+
+def update_email_template(template_id: int, *, subject: str, body: str,
+                          classification_id: int | None) -> None:
+    with connect() as conn:
+        conn.execute(
+            """
+            UPDATE email_templates
+               SET subject = ?, body = ?, classification_id = ?, updated_at = ?
+             WHERE id = ?
+            """,
+            (subject.strip(), body, classification_id, _utcnow(), template_id),
+        )
+
+
+def create_email_template(name: str) -> int:
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("Enter a template name.")
+    with connect() as conn:
+        try:
+            cur = conn.execute(
+                "INSERT INTO email_templates (name, subject, body, updated_at) VALUES (?, '', '', ?)",
+                (name, _utcnow()),
+            )
+        except sqlite3.IntegrityError:
+            raise ValueError(f"A template named '{name}' already exists.")
+        return cur.lastrowid
+
+
+def delete_email_template(template_id: int) -> None:
+    with connect() as conn:
+        conn.execute("DELETE FROM email_templates WHERE id = ?", (template_id,))
+
+
+def upcoming_assignments(days_ahead: int) -> list[dict]:
+    """Assigned shifts starting within the next days_ahead days (inclusive),
+    across all stored schedules, joined with schedule metadata."""
+    from datetime import date, timedelta
+
+    today = date.today()
+    horizon = today + timedelta(days=max(0, days_ahead))
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT ss.*, a.person, a.institution AS assigned_institution,
+                   s.name AS schedule_name, s.classification_id,
+                   c.name AS classification_name
+              FROM assignments a
+              JOIN schedule_shifts ss
+                ON ss.schedule_id = a.schedule_id AND ss.shift_id = a.shift_id
+              JOIN schedules s ON s.id = a.schedule_id
+              LEFT JOIN classifications c ON c.id = s.classification_id
+             WHERE a.person != '' AND a.person != 'UNASSIGNED'
+               AND ss.date >= ? AND ss.date <= ?
+             ORDER BY ss.date, ss.start_time, s.name, ss.shift_id
+            """,
+            (today.isoformat(), horizon.isoformat()),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def resolve_reminder_email(person: str) -> str:
+    """Email for a reminder: the registered user account's address first,
+    then the contacts table."""
+    person = (person or "").strip()
+    if not person:
+        return ""
+    from app import auth
+
+    with auth.connect() as conn:
+        user = conn.execute(
+            "SELECT email FROM users WHERE name = ? COLLATE NOCASE", (person,)
+        ).fetchone()
+    if user and user["email"]:
+        return user["email"]
+    with connect() as conn:
+        row = conn.execute("SELECT email FROM contacts WHERE name = ?", (person,)).fetchone()
+    return (row["email"] if row else "") or ""
+
+
+def log_email(recipient: str, person: str, subject: str, schedule_id: int | None,
+              shift_id: str, sent_by: str, status: str = "sent") -> None:
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO email_log (sent_at, recipient, person, subject, schedule_id, shift_id, sent_by, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (_utcnow(), recipient, person, subject, schedule_id, shift_id, sent_by, status),
+        )
+
+
+def recent_email_log(limit: int = 50) -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM email_log ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 # ---------------------------------------------------------------------------

@@ -48,6 +48,13 @@ preferences:
 # Container timezone: "today" on the calendar and log timestamps.
 timezone: America/Chicago
 
+# Outgoing reminder email. Leave host empty to disable sending.
+smtp:
+  host: ""
+  port: "25"
+  from: mu2e-shifts@fnal.gov
+  starttls: "0"
+
 data:
   dir: /app/data
   # SQLite database for named schedules, taxonomy, settings, and contacts.

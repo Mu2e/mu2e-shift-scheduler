@@ -233,6 +233,171 @@ def shift_setup_generate():
     ))
 
 
+SETTING_REMINDER_DAYS = "reminder_days_ahead"
+
+
+@bp.route("/email-templates", methods=["GET", "POST"])
+@admin_required
+def email_templates():
+    if request.method == "POST":
+        action = request.form.get("action", "save")
+        try:
+            if action == "create":
+                store.create_email_template(request.form.get("name", ""))
+                flash("Template created.", "success")
+            elif action == "delete":
+                store.delete_email_template(int(request.form.get("template_id", "0")))
+                flash("Template deleted.", "success")
+            else:
+                classification_id = None
+                raw = request.form.get("classification_id", "").strip()
+                if raw:
+                    classification_id = int(raw)
+                store.update_email_template(
+                    int(request.form.get("template_id", "0")),
+                    subject=request.form.get("subject", ""),
+                    body=request.form.get("body", ""),
+                    classification_id=classification_id,
+                )
+                flash("Template saved.", "success")
+        except (ValueError, TypeError) as exc:
+            flash(str(exc), "danger")
+        return redirect(url_for("admin.email_templates"))
+
+    from app.emailer import TEMPLATE_FIELDS
+
+    return render_template(
+        "email_templates.html",
+        nav_active="admin",
+        templates=store.list_email_templates(),
+        classifications=store.list_classifications(),
+        template_fields=TEMPLATE_FIELDS,
+        smtp_configured=bool(current_app.config.get("SMTP_HOST")),
+    )
+
+
+@bp.route("/reminders", methods=["GET", "POST"])
+@admin_required
+def reminders():
+    from app import emailer
+
+    if request.method == "POST" and request.form.get("action") == "send":
+        try:
+            window_days = int(request.form.get("days", "7"))
+        except ValueError:
+            window_days = 7
+        window = store.upcoming_assignments(window_days)
+        sent = 0
+        failures = []
+        for key in request.form.getlist("selected[]"):
+            schedule_id, _, shift_id = key.partition("|")
+            try:
+                schedule_id = int(schedule_id)
+            except ValueError:
+                continue
+            shift = next(
+                (row for row in window
+                 if row["schedule_id"] == schedule_id and row["shift_id"] == shift_id),
+                None,
+            )
+            if shift is None:
+                failures.append(f"{shift_id}: no longer in the reminder window")
+                continue
+            template = store.template_for_classification(shift.get("classification_id"))
+            if template is None:
+                failures.append(f"{shift_id}: no email template defined")
+                continue
+            try:
+                emailer.send_reminder(shift, shift["person"], template,
+                                      sent_by=getattr(current_user, "email", ""))
+                sent += 1
+            except ValueError as exc:
+                failures.append(str(exc))
+        if sent:
+            flash(f"Sent {sent} reminder email(s).", "success")
+        for failure in failures[:10]:
+            flash(failure, "danger")
+        if len(failures) > 10:
+            flash(f"...and {len(failures) - 10} more failures.", "danger")
+        return redirect(url_for("admin.reminders", days=request.form.get("days", "7")))
+
+    # GET: preview the reminder list for the configured window
+    try:
+        days = int(request.args.get("days", "") or
+                   store.get_setting(SETTING_REMINDER_DAYS, "7"))
+    except ValueError:
+        days = 7
+    days = max(0, min(days, 365))
+    if request.args.get("days"):
+        store.set_setting(SETTING_REMINDER_DAYS, str(days))
+
+    rows = []
+    for shift in store.upcoming_assignments(days):
+        template = store.template_for_classification(shift.get("classification_id"))
+        rows.append({
+            **shift,
+            "email": store.resolve_reminder_email(shift["person"]),
+            "template_name": template["name"] if template else "",
+        })
+    return render_template(
+        "reminders.html",
+        nav_active="admin",
+        days=days,
+        rows=rows,
+        email_log=store.recent_email_log(25),
+        smtp_configured=bool(current_app.config.get("SMTP_HOST")),
+    )
+
+
+@bp.route("/reminders/send-one", methods=["POST"])
+@admin_required
+def reminders_send_one():
+    """Send a single reminder from the calendar context menu."""
+    from app import emailer
+
+    return_params = {
+        "schedule": request.form.get("schedule") or None,
+        "tab": request.form.get("tab") or None,
+        "view": request.form.get("view") or None,
+        "date": request.form.get("date") or None,
+    }
+    try:
+        schedule_id = int(request.form.get("schedule_id", ""))
+    except ValueError:
+        flash("Choose a stored schedule first.", "danger")
+        return redirect(url_for("main.calendar_view"))
+    schedule = store.get_schedule(schedule_id)
+    shift_id = request.form.get("shift_id", "").strip()
+    if schedule is None:
+        flash("Schedule not found.", "danger")
+        return redirect(url_for("main.calendar_view"))
+
+    shift = next(
+        (row for row in store.get_schedule_shifts(schedule_id) if row["shift_id"] == shift_id),
+        None,
+    )
+    assignment = store.get_assignments(schedule_id).get(shift_id)
+    person = (assignment or {}).get("person", "").strip()
+    if shift is None or not person or person.upper() == "UNASSIGNED":
+        flash("That shift has no assigned person to remind.", "danger")
+        return redirect(url_for("main.calendar_view", **return_params))
+
+    shift = dict(shift)
+    shift["schedule_name"] = schedule["name"]
+    shift["classification_name"] = schedule.get("classification_name", "")
+    template = store.template_for_classification(schedule.get("classification_id"))
+    if template is None:
+        flash("No email template is defined. Create one under Admin → Email Templates.", "danger")
+        return redirect(url_for("main.calendar_view", **return_params))
+    try:
+        recipient = emailer.send_reminder(shift, person, template,
+                                          sent_by=getattr(current_user, "email", ""))
+        flash(f"Reminder sent to {person} <{recipient}>.", "success")
+    except ValueError as exc:
+        flash(str(exc), "danger")
+    return redirect(url_for("main.calendar_view", **return_params))
+
+
 @bp.route("/taxonomy/add", methods=["POST"])
 @admin_required
 def taxonomy_add():

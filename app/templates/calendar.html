@@ -371,8 +371,18 @@
 <div id="assignContextMenu" class="dropdown-menu shadow" style="position: fixed; display: none; z-index: 1080;">
   <h6 class="dropdown-header" id="assignMenuHeader"></h6>
   <button type="button" class="dropdown-item" id="assignMenuAssign">Assign person&hellip;</button>
+  <button type="button" class="dropdown-item" id="assignMenuEmail">Send reminder email</button>
   <button type="button" class="dropdown-item text-danger" id="assignMenuClear">Clear assignment</button>
 </div>
+
+<form method="post" action="{{ url_for('admin.reminders_send_one') }}" id="reminderForm" class="d-none">
+  <input type="hidden" name="schedule_id" value="{{ selected_schedule.id }}">
+  <input type="hidden" name="shift_id" id="reminderShiftId" value="">
+  <input type="hidden" name="schedule" value="{{ selected_schedule.name }}">
+  <input type="hidden" name="tab" value="{{ active_tab if active_tab not in ('', '__files__') else '' }}">
+  <input type="hidden" name="view" value="{{ view }}">
+  <input type="hidden" name="date" value="{{ nav.date }}">
+</form>
 
 <div class="modal fade" id="assignModal" tabindex="-1" aria-labelledby="assignModalLabel" aria-hidden="true">
   <div class="modal-dialog">
@@ -439,6 +449,9 @@
       var person = el.dataset.person;
       document.getElementById("assignMenuHeader").textContent =
         el.dataset.shiftLabel + (person ? " — " + person : " — Empty");
+      // Email and clear only make sense for assigned shifts.
+      document.getElementById("assignMenuEmail").classList.toggle("disabled", !person);
+      document.getElementById("assignMenuClear").classList.toggle("disabled", !person);
       menu.style.display = "block";
       // Keep the menu inside the viewport.
       var x = Math.min(e.clientX, window.innerWidth - menu.offsetWidth - 8);
@@ -460,6 +473,15 @@
     var modal = new bootstrap.Modal(modalEl);
     modal.show();
     modalEl.addEventListener("shown.bs.modal", function () { personInput.focus(); }, { once: true });
+  });
+
+  document.getElementById("assignMenuEmail").addEventListener("click", function () {
+    hideMenu();
+    if (!current || !current.dataset.person) return;
+    if (!confirm("Send a reminder email to " + current.dataset.person + " for " +
+                 current.dataset.shiftLabel + "?")) return;
+    document.getElementById("reminderShiftId").value = current.dataset.shiftId;
+    document.getElementById("reminderForm").submit();
   });
 
   document.getElementById("assignMenuClear").addEventListener("click", function () {

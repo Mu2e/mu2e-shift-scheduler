@@ -17,6 +17,10 @@ data:
   AUTH_DB_PATH: {{ .Values.auth.dbPath | quote }}
   APP_DB_PATH: {{ .Values.data.appDbPath | default (printf "%s/app.sqlite" .Values.data.dir) | quote }}
   SESSION_COOKIE_SECURE: {{ .Values.auth.sessionCookieSecure | quote }}
+  SMTP_HOST: {{ .Values.smtp.host | quote }}
+  SMTP_PORT: {{ .Values.smtp.port | quote }}
+  SMTP_FROM: {{ .Values.smtp.from | quote }}
+  SMTP_STARTTLS: {{ .Values.smtp.starttls | quote }}
   SHOW_ADMIN_LOGIN: {{ .Values.auth.showAdminLogin | quote }}
   MU2E_INITIAL_ADMIN_USERNAME: {{ .Values.auth.initialAdminUsername | quote }}
   MU2E_INITIAL_ADMIN_EMAIL: {{ .Values.auth.initialAdminEmail | quote }}
