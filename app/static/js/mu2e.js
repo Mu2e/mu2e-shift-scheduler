@@ -212,10 +212,28 @@
         }
       }
 
+      // Rows whose fields need unique names (per-row checkbox groups) use
+      // __IDX__ placeholders in the template; substitute a running index.
+      var nextIndex = parseInt(container.dataset.nextIndex || "0", 10);
+
+      function substituteIndex(fragment, index) {
+        fragment.querySelectorAll("[name], [id], [for]").forEach(function (el) {
+          ["name", "id", "htmlFor"].forEach(function (prop) {
+            var attr = prop === "htmlFor" ? "for" : prop;
+            var value = el.getAttribute(attr);
+            if (value && value.indexOf("__IDX__") !== -1) {
+              el.setAttribute(attr, value.split("__IDX__").join(String(index)));
+            }
+          });
+        });
+      }
+
       body.querySelectorAll("tr").forEach(wireRemove);
       if (addButton && templateEl) {
         addButton.addEventListener("click", function () {
           var fragment = templateEl.content.cloneNode(true);
+          substituteIndex(fragment, nextIndex);
+          nextIndex += 1;
           body.appendChild(fragment);
           wireRemove(body.lastElementChild);
           updateCount();

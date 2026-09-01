@@ -1,0 +1,59 @@
+.TH DEPLOY-OKD 1 "2026-08-31" "Mu2e Shift Scheduler v1.0.0" "Mu2e Shift Scheduler"
+.SH NAME
+deploy-okd.sh \- build, push, and deploy the scheduler image to OKD
+.SH SYNOPSIS
+.B ./scripts/deploy-okd.sh
+[\fB\-t\fR \fITAG\fR] [\fB\-r\fR \fIREPO\fR] [\fB\-n\fR \fINAMESPACE\fR]
+[\fB\-f\fR \fIVALUES\fR]... [\fB\-\-release\fR \fINAME\fR]
+[\fB\-\-tls\-secret\fR \fINAME\fR] [\fB\-\-timeout\fR \fISEC\fR]
+[\fB\-\-no\-build\fR] [\fB\-\-no\-cert\fR]
+.SH DESCRIPTION
+Seven-step deployment: docker build and push, two-pass Helm apply around the
+cert-manager TLS secret, deployment restart, rollout wait, status report, and
+an HTTPS probe of the route. Requires an active
+.BR oc (1)
+login. Defaults target the production instance (namespace and release
+\fImu2e-shifts\fR, https://mu2e-shifts.fnal.gov) layered with
+.IR my-values.yaml .
+.SH OPTIONS
+.TP
+.BI \-t " TAG"
+Image tag (default: exact git tag on HEAD, else \fIlatest\fR).
+.TP
+.BI \-r " REPO"
+Image repository (default docker.io/normanajn/mu2e-shift-scheduler-web).
+.TP
+.BI \-n " NAMESPACE"
+OKD namespace/project (default mu2e-shifts).
+.TP
+.BI \-f " VALUES"
+Helm values file; repeat to layer, later files win (default my-values.yaml).
+.TP
+.BI \-\-release " NAME"
+Helm release name (default mu2e-shifts).
+.TP
+.BI \-\-tls\-secret " NAME"
+cert-manager TLS secret name (default mu2e-shifts-tls).
+.TP
+.BI \-\-timeout " SEC"
+Rollout timeout in seconds (default 180).
+.TP
+.B \-\-no\-build
+Skip the Docker build and push step.
+.TP
+.B \-\-no\-cert
+Skip cert-manager; use the router's default wildcard certificate.
+.SH EXAMPLES
+Production:
+.nf
+    ./scripts/deploy-okd.sh
+.fi
+Test instance (https://mu2e-okd-test.fnal.gov):
+.nf
+    ./scripts/deploy-okd.sh -n mu2e-test --release mu2e-test -t test \\
+        --tls-secret mu2e-test-tls \\
+        -f helm/simple/values-test.yaml -f my-values-test.yaml
+.fi
+.SH SEE ALSO
+.BR build-docker (1),
+.BR run-docker-local (1)

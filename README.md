@@ -12,32 +12,34 @@ human-readable CSV and JSON formats.
 
 ## Getting Started
 
-To use this tool, you will need to clone the repository and install any python dependancies that it requires.
-
-Start by creating a virtual environment and installing pip dependancies that are
-listed in the requirements text file::
-```
-python3 -m venv venv
-source ./venv/bin/activate
-pip install -r requirements.txt
-```
-Once this is done you should be able to start up the front end:
+Fresh checkout — one command sets up the venv, installs dependencies, runs the
+test suite, and starts the development server on http://127.0.0.1:8001:
 
 ```
-python3 run.py --preferences-shifts ./sample_data/shifts_blocks.csv
+./bootstrap.sh --admin-password <password-for-local-admin>
 ```
 
-You can use the --help option to see all the options that it supports.  In 
-general you need to point it where to write out data and what to use as 
-the lists of shifts (i.e. day by day or different blocks).
+Day-to-day the server is managed with the start/stop scripts (safe to re-run;
+the start script updates dependencies and restarts a running server):
 
-There are a number of different examples provided.  There are also tools for generating
-these files for different types of time windows (i.e. how many weeks, when they start,
-if they should be week/weekend blocks)  Again look at the examples and use the
-builtin help.
+```
+./scripts/start-mu2e-shift-scheduler          # dev server on 127.0.0.1:8001
+./scripts/start-mu2e-shift-scheduler --prod   # gunicorn on 0.0.0.0
+./scripts/stop-mu2e-shift-scheduler           # graceful stop
+```
 
- 
+Log in with the local admin form (`mu2e-admin@fnal.gov` / your password);
+in development `SHOW_ADMIN_LOGIN=1` is the default. Local settings live in
+`.env` (created from `.env.example` by bootstrap); precedence is
+command line > environment > `.env` > `config/config.yaml` > defaults.
+Windows users: `bootstrap.ps1` and `scripts\*.ps1` provide the same flow.
 
+The package is pip-installable (`pyproject.toml`); the venv gets a
+`mu2e-shift-scheduler` console command with `solve` (batch scheduling) and
+`serve` subcommands. Man pages for every script are in `man/` — e.g.
+`man ./man/start-mu2e-shift-scheduler.1`. There are also generator tools under
+`scripts/` for producing shift CSVs for different time windows; see their
+`--help` and the samples in `sample_data/`.
 
 ---
 

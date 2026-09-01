@@ -21,7 +21,8 @@ from flask import (
 )
 from flask_login import current_user
 
-from scheduler.loader import load_shifts
+from app import store
+from scheduler.loader import load_config, load_shifts
 
 bp = Blueprint("preferences", __name__, url_prefix="/preferences")
 
@@ -31,6 +32,23 @@ def _shifts_csv_path() -> Path:
     if not p:
         raise RuntimeError("PREFERENCES_SHIFTS_CSV is not configured.")
     return Path(p)
+
+
+def _load_preference_shifts() -> tuple[list, dict | None]:
+    """Shifts open for preference collection.
+
+    Uses the schedule the admin selected on the Configuration page; when none
+    is set (or it was deleted), falls back to the legacy PREFERENCES_SHIFTS_CSV
+    file. Returns (shifts, schedule) where schedule is the stored-schedule dict
+    or None for the legacy CSV path.
+    """
+    schedule_id = store.get_preferences_schedule_id()
+    if schedule_id:
+        schedule = store.get_schedule(schedule_id)
+        if schedule:
+            config = load_config(current_app.config.get("SCHEDULER_CONFIG", "config/config.yaml"))
+            return store.schedule_to_shift_objects(schedule_id, config), schedule
+    return load_shifts(str(_shifts_csv_path())), None
 
 
 def _json_path() -> Path:
@@ -94,15 +112,21 @@ def _overwrite_submission(name: str, preferences: list[str]) -> None:
 
 @bp.route("/")
 def index():
+    preferences_schedule = None
     try:
-        shifts = load_shifts(str(_shifts_csv_path()))
+        shifts, preferences_schedule = _load_preference_shifts()
     except Exception as exc:
         flash(f"Could not load shifts: {exc}", "danger")
         shifts = []
     default_name = ""
     if current_user.is_authenticated:
         default_name = getattr(current_user, "name", "") or getattr(current_user, "email", "")
-    return render_template("preferences/index.html", shifts=shifts, default_name=default_name)
+    return render_template(
+        "preferences/index.html",
+        shifts=shifts,
+        default_name=default_name,
+        preferences_schedule=preferences_schedule,
+    )
 
 
 @bp.route("/submit", methods=["POST"])
@@ -181,7 +205,7 @@ def current():
     current_submissions.sort(key=lambda s: s["name"].strip().lower())
 
     try:
-        shifts = load_shifts(str(_shifts_csv_path()))
+        shifts, _schedule = _load_preference_shifts()
         shift_map = {s.shift_id: s for s in shifts}
     except Exception:
         shift_map = {}
@@ -204,7 +228,7 @@ def submissions():
 
     # Count unique names (use the most recent submission per person)
     try:
-        shifts = load_shifts(str(_shifts_csv_path()))
+        shifts, _schedule = _load_preference_shifts()
         shift_map = {s.shift_id: s for s in shifts}
     except Exception:
         shift_map = {}

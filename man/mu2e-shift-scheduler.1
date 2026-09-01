@@ -1,0 +1,28 @@
+.TH MU2E-SHIFT-SCHEDULER 1 "2026-08-31" "Mu2e Shift Scheduler v1.0.0" "Mu2e Shift Scheduler"
+.SH NAME
+mu2e-shift-scheduler \- command-line interface to the Mu2e shift scheduler
+.SH SYNOPSIS
+.B mu2e-shift-scheduler
+.I solve
+\fB\-\-shifts\fR \fICSV\fR \fB\-\-people\fR \fICSV\fR
+[\fB\-\-config\fR \fIYAML\fR] [\fB\-\-target\fR \fIN\fR] [\fB\-\-min\fR \fIN\fR]
+[\fB\-\-max\fR \fIN\fR] [\fB\-\-alpha\fR \fIF\fR] [\fB\-\-out\fR \fIFILE\fR]
+.br
+.B mu2e-shift-scheduler
+.I serve
+[\fB\-\-host\fR \fIHOST\fR] [\fB\-\-port\fR \fIPORT\fR]
+.SH DESCRIPTION
+Console entry point installed by the package (\fIpyproject.toml\fR); it is
+equivalent to running
+.IR "python cli.py" .
+The
+.I solve
+subcommand runs the two-pass ILP solver over a shifts CSV and a people CSV and
+writes assignments; the
+.I serve
+subcommand starts the web interface. Run each subcommand with
+.B \-\-help
+for the full option list.
+.SH SEE ALSO
+.BR start-mu2e-shift-scheduler (1),
+.BR create-shift-blocks (1)

@@ -632,6 +632,7 @@ def configuration():
         classifications=store.list_classifications(),
         schedules=store.list_schedules(),
         default_schedule_id=store.get_default_schedule_id(),
+        preferences_schedule_id=store.get_preferences_schedule_id(),
     )
 
 

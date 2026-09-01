@@ -1,0 +1,14 @@
+.TH RUN-DOCKER-LOCAL 1 "2026-08-31" "Mu2e Shift Scheduler v1.0.0" "Mu2e Shift Scheduler"
+.SH NAME
+run-docker-local.sh \- run the scheduler container locally
+.SH SYNOPSIS
+.B ./scripts/run-docker-local.sh
+.SH DESCRIPTION
+Runs the image built by
+.BR build-docker (1)
+locally with gunicorn on port 8000, mirroring the OKD deployment. Environment
+variables such as \fBMU2E_INITIAL_ADMIN_PASSWORD\fR and
+\fBSHOW_ADMIN_LOGIN\fR apply as they do for the OKD instance.
+.SH SEE ALSO
+.BR build-docker (1),
+.BR start-mu2e-shift-scheduler (1)

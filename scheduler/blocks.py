@@ -121,32 +121,43 @@ def expand_shift_days(date_text: str, date_end_text: str = "", days_text: str = 
 
 
 @dataclass
+class BlockSpec:
+    """One repeating block of days from the Shift Setup page.
+
+    A block either names specific days of the week ("Weekdays" = Mon-Thu,
+    "Weekends" = Fri-Sun) or, with no weekdays checked, covers length_days
+    consecutive days from each occurrence anchor.
+    """
+
+    name: str                       # "Weekdays", "Weekends"
+    length_days: int = 1            # block length for consecutive-day blocks
+    weekdays: list = field(default_factory=list)  # checked days-of-week (0=Mon)
+
+
+@dataclass
 class ShiftSpec:
     """One shift period definition from the Shift Setup page."""
 
     name: str                       # "Day", "DAQ Expert Night"
     start_time: str                 # "08:00"
     end_time: str                   # "16:00"
-    length_days: int = 1            # shift length in days (1 = single day)
-    repetition: str = "week"        # day | week | 2week | month
-    weekdays: list = field(default_factory=list)  # checked days-of-week (0=Mon)
     weight: float | None = None     # -> points column (None = loader defaults)
 
 
-def _occurrence_dates(spec: ShiftSpec, anchor: date) -> list[date]:
-    """Calendar days covered by one occurrence of a spec starting at anchor."""
-    if spec.weekdays:
+def _occurrence_dates(block: BlockSpec, anchor: date) -> list[date]:
+    """Calendar days covered by one occurrence of a block starting at anchor."""
+    if block.weekdays:
         base = week_start(anchor)
-        return [base + timedelta(days=d) for d in sorted(spec.weekdays)]
-    return [anchor + timedelta(days=i) for i in range(max(1, spec.length_days))]
+        return [base + timedelta(days=d) for d in sorted(block.weekdays)]
+    return [anchor + timedelta(days=i) for i in range(max(1, block.length_days))]
 
 
-def _next_anchor(spec: ShiftSpec, anchor: date) -> date:
-    if spec.repetition == "day":
+def _next_anchor(repetition: str, anchor: date) -> date:
+    if repetition == "day":
         return anchor + timedelta(days=1)
-    if spec.repetition == "2week":
+    if repetition == "2week":
         return anchor + timedelta(days=14)
-    if spec.repetition == "month":
+    if repetition == "month":
         return add_months(anchor, 1)
     return anchor + timedelta(days=7)
 
@@ -155,9 +166,11 @@ def generate_schedule_rows(
     schedule_name: str,
     start_date: date,
     end_date: date,
-    shift_specs: list,
+    blocks: list,
+    shifts: list,
+    repetition: str = "week",
 ) -> tuple[list[dict], int]:
-    """Generate block-CSV rows for a schedule from Shift Setup specs.
+    """Generate block-CSV rows: every block x shift combination per occurrence.
 
     Returns (rows, skipped_partial_count). Occurrences whose covered days fall
     partly outside [start_date, end_date] are skipped and counted, matching the
@@ -165,22 +178,31 @@ def generate_schedule_rows(
     """
     if end_date < start_date:
         raise ValueError("Schedule stop date must be on or after the start date.")
-    for spec in shift_specs:
-        if spec.repetition not in REPETITIONS:
-            raise ValueError(f"Unknown repetition rate '{spec.repetition}'.")
+    if repetition not in REPETITIONS:
+        raise ValueError(f"Unknown repetition rate '{repetition}'.")
+    if not blocks:
+        raise ValueError("Define at least one block.")
+    if not shifts:
+        raise ValueError("Define at least one shift.")
+    if repetition == "day" and any(b.weekdays for b in blocks):
+        raise ValueError(
+            "Weekday selections conflict with daily repetition: a daily block "
+            "would regenerate the same week every day. Use weekly repetition "
+            "for day-of-week blocks."
+        )
 
     slug = slugify(schedule_name)
     rows: list[dict] = []
     skipped = 0
     seen_ids: set = set()
 
-    for spec_index, spec in enumerate(shift_specs, start=1):
+    for block_index, block in enumerate(blocks, start=1):
         # Weekday-checkbox blocks are anchored to week starts so the checked
         # days always mean "those days of that week".
-        anchor = week_start(start_date) if spec.weekdays else start_date
+        anchor = week_start(start_date) if block.weekdays else start_date
         occurrence = 1
         while anchor <= end_date:
-            covered = _occurrence_dates(spec, anchor)
+            covered = _occurrence_dates(block, anchor)
             if any(d < start_date or d > end_date for d in covered):
                 skipped += 1
             else:
@@ -189,27 +211,30 @@ def generate_schedule_rows(
                 day_names = ",".join(
                     WEEKDAY_NAMES[d] for d in sorted({c.weekday() for c in covered})
                 )
-                shift_slug = slugify(spec.name)
-                shift_id = f"{slug}-W{occurrence:02d}-B{spec_index}-S{spec_index}-{shift_slug}"
-                if shift_id in seen_ids:
-                    raise ValueError(f"Duplicate generated shift_id '{shift_id}'.")
-                seen_ids.add(shift_id)
-                rows.append({
-                    "shift_id": shift_id,
-                    "schedule_name": schedule_name,
-                    "week": occurrence,
-                    "block_number": spec_index,
-                    "block_name": spec.name,
-                    "block_type": shift_slug,
-                    "days": day_names,
-                    "date": block_start.isoformat(),
-                    "date_end": block_end.isoformat(),
-                    "start_time": spec.start_time,
-                    "end_time": spec.end_time,
-                    "shift_type": spec.name,
-                    "points": "" if spec.weight is None else spec.weight,
-                })
-            next_anchor = _next_anchor(spec, anchor)
+                for shift_index, shift in enumerate(shifts, start=1):
+                    shift_slug = slugify(shift.name)
+                    shift_id = (
+                        f"{slug}-W{occurrence:02d}-B{block_index}-S{shift_index}-{shift_slug}"
+                    )
+                    if shift_id in seen_ids:
+                        raise ValueError(f"Duplicate generated shift_id '{shift_id}'.")
+                    seen_ids.add(shift_id)
+                    rows.append({
+                        "shift_id": shift_id,
+                        "schedule_name": schedule_name,
+                        "week": occurrence,
+                        "block_number": block_index,
+                        "block_name": block.name,
+                        "block_type": slugify(block.name),
+                        "days": day_names,
+                        "date": block_start.isoformat(),
+                        "date_end": block_end.isoformat(),
+                        "start_time": shift.start_time,
+                        "end_time": shift.end_time,
+                        "shift_type": shift.name,
+                        "points": "" if shift.weight is None else shift.weight,
+                    })
+            next_anchor = _next_anchor(repetition, anchor)
             if next_anchor <= anchor:
                 break
             anchor = next_anchor

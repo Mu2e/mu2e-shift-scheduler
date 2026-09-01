@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# stop-mu2e-shift-scheduler — gracefully stop the running Mu2e Shift Scheduler server
+#
+# Usage:
+#   ./scripts/stop-mu2e-shift-scheduler [--tail]
+#
+# Options:
+#   --tail    Print the last 20 lines of the server log before stopping
+#
+# Sends SIGTERM, waits up to 5 seconds, escalates to SIGKILL if needed, and
+# removes the PID file and any stale solver temp files.
+
+set -euo pipefail
+
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; RESET='\033[0m'
+success() { printf "${GREEN}[OK] %s${RESET}\n" "$*"; }
+warn()    { printf "${YELLOW}[WARN] %s${RESET}\n" "$*"; }
+info()    { printf "${CYAN}==> %s${RESET}\n" "$*"; }
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PID_FILE="$SCRIPT_DIR/.mu2e-shift-scheduler.pid"
+LOG_FILE="$SCRIPT_DIR/logs/mu2e-shift-scheduler.log"
+
+TAIL_LOG=false
+[[ "${1:-}" == "--tail" ]] && TAIL_LOG=true
+
+if [[ "$TAIL_LOG" == true && -f "$LOG_FILE" ]]; then
+  echo ""
+  info "Last 20 lines of server log:"
+  echo ""
+  tail -20 "$LOG_FILE"
+  echo ""
+fi
+
+if [[ ! -f "$PID_FILE" ]]; then
+  warn "No PID file found at $PID_FILE — server may not be running."
+else
+  PID=$(cat "$PID_FILE")
+  if kill -0 "$PID" 2>/dev/null; then
+    info "Stopping server (PID $PID)..."
+    kill "$PID"
+    for _ in {1..10}; do
+      kill -0 "$PID" 2>/dev/null || break
+      sleep 0.5
+    done
+    if kill -0 "$PID" 2>/dev/null; then
+      warn "Server did not exit cleanly — sending SIGKILL"
+      kill -9 "$PID" 2>/dev/null || true
+    fi
+    success "Server stopped"
+  else
+    warn "Process $PID is no longer running (stale PID file removed)"
+  fi
+  rm -f "$PID_FILE"
+fi
+
+# Clean up per-session solver temp files left by an unclean shutdown.
+_tmp="${TMPDIR:-/tmp}"
+find "$_tmp" -maxdepth 1 \
+     \( -name 'mu2e_sched_*.json' -o -name 'mu2e_preview_*.json' -o -name 'mu2e_staged_*.csv' \) \
+     -mmin +60 -delete 2>/dev/null || true

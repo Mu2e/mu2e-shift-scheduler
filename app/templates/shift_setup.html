@@ -86,43 +86,117 @@
   </div>
 
   <div class="card mb-3">
-    <div class="card-header fw-semibold">Pattern</div>
-    <div class="card-body row g-3">
-      <div class="col-md-3">
-        <label class="form-label" for="shift_length_days">Shift length (days)</label>
-        <input class="form-control" type="number" id="shift_length_days" name="shift_length_days"
-               min="1" value="{{ form_data.get('shift_length_days', '1') }}" required>
-      </div>
-      <div class="col-md-3">
-        <label class="form-label" for="repeat">Repetition rate</label>
-        <select class="form-select" id="repeat" name="repeat">
+    <div class="card-header fw-semibold d-flex align-items-center">
+      Blocks
+      <span class="badge text-bg-light text-muted ms-2"><span data-row-count="blocks">0</span> block(s)</span>
+      <div class="ms-auto d-flex align-items-center gap-2">
+        <label class="form-label mb-0 small" for="repeat">Repetition rate</label>
+        <select class="form-select form-select-sm w-auto" id="repeat" name="repeat">
           {% for value, label in [('day', 'Daily'), ('week', 'Weekly'), ('2week', 'Every 2 weeks'), ('month', 'Monthly')] %}
           <option value="{{ value }}" {{ 'selected' if form_data.get('repeat', 'week') == value }}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
-      <div class="col-md-6">
-        <div class="form-label">Days of week (multi-day shifts)</div>
-        <div class="d-flex flex-wrap gap-3">
-          {% set checked_days = form_data.getlist('weekdays[]') if form_data.getlist is defined else [] %}
-          {% for value, label in [(0, 'Mon'), (1, 'Tue'), (2, 'Wed'), (3, 'Thu'), (4, 'Fri'), (5, 'Sat'), (6, 'Sun')] %}
-          <div class="form-check">
-            <input class="form-check-input" type="checkbox" name="weekdays[]" value="{{ value }}"
-                   id="wd{{ value }}" {{ 'checked' if value | string in checked_days }}>
-            <label class="form-check-label" for="wd{{ value }}">{{ label }}</label>
-          </div>
-          {% endfor %}
-        </div>
-        <div class="form-text">
-          For weekly/bi-weekly/monthly multi-day blocks, the checked days define the block
-          (e.g. Mon&ndash;Thu). Ignored for daily repetition.
-        </div>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive" data-dynamic-rows="blocks" data-template="blockRowTemplate"
+           data-next-index="2">
+        <table class="table table-sm align-middle mb-2">
+          <thead>
+            <tr>
+              <th style="min-width: 11rem;">Block name</th>
+              <th style="min-width: 7rem;">Block length (days)</th>
+              <th>Days of week</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="blockRows">
+            {% for i in range(2) %}
+            <tr>
+              <td><input class="form-control form-control-sm" type="text" name="block_name_{{ i }}"
+                         value="{{ form_data.get('block_name_' ~ i, '') }}"
+                         placeholder="{{ 'e.g. Weekdays' if i == 0 else 'e.g. Weekends' }}"></td>
+              <td><input class="form-control form-control-sm" type="number" min="1"
+                         name="block_length_{{ i }}" value="{{ form_data.get('block_length_' ~ i, '') }}"
+                         placeholder="auto"></td>
+              <td>
+                <div class="d-flex flex-wrap gap-2">
+                  {% set checked = form_data.getlist('block_days_' ~ i ~ '[]') if form_data.getlist is defined else [] %}
+                  {% for value, label in [(0, 'Mon'), (1, 'Tue'), (2, 'Wed'), (3, 'Thu'), (4, 'Fri'), (5, 'Sat'), (6, 'Sun')] %}
+                  <div class="form-check form-check-inline m-0">
+                    <input class="form-check-input" type="checkbox" name="block_days_{{ i }}[]"
+                           value="{{ value }}" id="bd{{ i }}_{{ value }}"
+                           {{ 'checked' if value | string in checked }}>
+                    <label class="form-check-label small" for="bd{{ i }}_{{ value }}">{{ label }}</label>
+                  </div>
+                  {% endfor %}
+                </div>
+              </td>
+              <td class="text-end">
+                <button type="button" class="btn btn-sm btn-outline-danger" data-remove-row>Remove</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-primary" data-add-row="blocks">Add block</button>
+      <div class="form-text">
+        Checked days define the block within each week (e.g. Mon&ndash;Thu for "Weekdays",
+        Fri&ndash;Sun for "Weekends") and set its length automatically. Leave all days
+        unchecked for a block of consecutive days starting at each occurrence &mdash; then
+        "Block length" applies. Blank rows are ignored. The repetition rate applies to
+        every block; day-of-week blocks need weekly or slower repetition.
       </div>
     </div>
   </div>
 
   <button type="submit" class="btn btn-primary btn-lg">Generate schedule</button>
 </form>
+
+<template id="blockRowTemplate">
+  <tr>
+    <td><input class="form-control form-control-sm" type="text" name="block_name___IDX__"
+               placeholder="Block name"></td>
+    <td><input class="form-control form-control-sm" type="number" min="1"
+               name="block_length___IDX__" placeholder="auto"></td>
+    <td>
+      <div class="d-flex flex-wrap gap-2">
+        <div class="form-check form-check-inline m-0">
+          <input class="form-check-input" type="checkbox" name="block_days___IDX__[]" value="0" id="bd__IDX___0">
+          <label class="form-check-label small" for="bd__IDX___0">Mon</label>
+        </div>
+        <div class="form-check form-check-inline m-0">
+          <input class="form-check-input" type="checkbox" name="block_days___IDX__[]" value="1" id="bd__IDX___1">
+          <label class="form-check-label small" for="bd__IDX___1">Tue</label>
+        </div>
+        <div class="form-check form-check-inline m-0">
+          <input class="form-check-input" type="checkbox" name="block_days___IDX__[]" value="2" id="bd__IDX___2">
+          <label class="form-check-label small" for="bd__IDX___2">Wed</label>
+        </div>
+        <div class="form-check form-check-inline m-0">
+          <input class="form-check-input" type="checkbox" name="block_days___IDX__[]" value="3" id="bd__IDX___3">
+          <label class="form-check-label small" for="bd__IDX___3">Thu</label>
+        </div>
+        <div class="form-check form-check-inline m-0">
+          <input class="form-check-input" type="checkbox" name="block_days___IDX__[]" value="4" id="bd__IDX___4">
+          <label class="form-check-label small" for="bd__IDX___4">Fri</label>
+        </div>
+        <div class="form-check form-check-inline m-0">
+          <input class="form-check-input" type="checkbox" name="block_days___IDX__[]" value="5" id="bd__IDX___5">
+          <label class="form-check-label small" for="bd__IDX___5">Sat</label>
+        </div>
+        <div class="form-check form-check-inline m-0">
+          <input class="form-check-input" type="checkbox" name="block_days___IDX__[]" value="6" id="bd__IDX___6">
+          <label class="form-check-label small" for="bd__IDX___6">Sun</label>
+        </div>
+      </div>
+    </td>
+    <td class="text-end">
+      <button type="button" class="btn btn-sm btn-outline-danger" data-remove-row>Remove</button>
+    </td>
+  </tr>
+</template>
 
 <template id="shiftRowTemplate">
   <tr>

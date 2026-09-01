@@ -101,13 +101,15 @@ def test_shift_setup_generate_creates_schedule(admin_client, app):
             "classification": "general-shifts",
             "date_start": "2026-05-04",
             "date_end": "2026-05-17",
+            "block_name_0": "Weekdays",
+            "block_days_0[]": ["0", "1", "2", "3"],
+            "block_name_1": "Weekends",
+            "block_days_1[]": ["4", "5", "6"],
             "shift_name[]": ["Day", "Night"],
             "shift_start[]": ["08:00", "20:00"],
             "shift_end[]": ["20:00", "08:00"],
             "shift_weight[]": ["1.0", "2.0"],
-            "shift_length_days": "4",
             "repeat": "week",
-            "weekdays[]": ["0", "1", "2", "3"],
         },
         follow_redirects=False,
     )
@@ -116,18 +118,54 @@ def test_shift_setup_generate_creates_schedule(admin_client, app):
         schedule = store.get_schedule_by_name("Generated 2026")
         assert schedule is not None
         shifts = store.get_schedule_shifts(schedule["id"])
-        # 2 shift specs x 2 full weeks
-        assert len(shifts) == 4
-        day_shift = next(s for s in shifts if s["shift_name"] == "Day")
-        assert day_shift["date"] == "2026-05-04"
-        assert day_shift["date_end"] == "2026-05-07"
-        assert day_shift["days"] == "Mon,Tue,Wed,Thu"
-        assert day_shift["points"] == 1.0
+        # 2 blocks x 2 shifts x 2 full weeks
+        assert len(shifts) == 8
+        assert {s["block_name"] for s in shifts} == {"Weekdays", "Weekends"}
+        weekday_day = next(
+            s for s in shifts
+            if s["block_name"] == "Weekdays" and s["shift_name"] == "Day" and s["week"] == 1
+        )
+        assert weekday_day["date"] == "2026-05-04"
+        assert weekday_day["date_end"] == "2026-05-07"
+        assert weekday_day["days"] == "Mon,Tue,Wed,Thu"
+        assert weekday_day["points"] == 1.0
+        weekend_night = next(
+            s for s in shifts
+            if s["block_name"] == "Weekends" and s["shift_name"] == "Night" and s["week"] == 1
+        )
+        assert weekend_night["date"] == "2026-05-08"
+        assert weekend_night["date_end"] == "2026-05-10"
+        assert weekend_night["points"] == 2.0
     # Backing CSV loads through the scheduler loader
     from scheduler.loader import load_shifts
     backing = Path(app.config["CSV_DIR"]) / "generated-2026.csv"
     assert backing.exists()
-    assert len(load_shifts(str(backing), {})) == 4
+    assert len(load_shifts(str(backing), {})) == 8
+
+
+def test_shift_setup_consecutive_block_without_weekdays(admin_client, app):
+    response = admin_client.post(
+        "/admin/shift-setup/generate",
+        data={
+            "name": "Oncall 2026",
+            "date_start": "2026-05-04",
+            "date_end": "2026-05-31",
+            "block_name_0": "Oncall Week",
+            "block_length_0": "7",
+            "shift_name[]": ["Oncall"],
+            "shift_start[]": ["00:00"],
+            "shift_end[]": ["23:59"],
+            "shift_weight[]": ["3.5"],
+            "repeat": "2week",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 302, response.get_data(as_text=True)
+    with app.app_context():
+        shifts = store.get_schedule_shifts(store.get_schedule_by_name("Oncall 2026")["id"])
+        assert [s["date"] for s in shifts] == ["2026-05-04", "2026-05-18"]
+        assert shifts[0]["date_end"] == "2026-05-10"
+        assert shifts[0]["points"] == 3.5
 
 
 def test_shift_setup_invalid_input_rerenders_form(admin_client):
@@ -135,13 +173,27 @@ def test_shift_setup_invalid_input_rerenders_form(admin_client):
         "/admin/shift-setup/generate",
         data={
             "name": "Bad", "date_start": "2026-05-10", "date_end": "2026-05-04",
+            "block_name_0": "Weekdays", "block_days_0[]": ["0", "1"],
             "shift_name[]": ["Day"], "shift_start[]": ["08:00"], "shift_end[]": ["16:00"],
-            "shift_weight[]": [""], "shift_length_days": "1", "repeat": "week",
+            "shift_weight[]": [""], "repeat": "week",
         },
         follow_redirects=False,
     )
     assert response.status_code == 400
     assert "Stop date must be on or after the start date" in response.get_data(as_text=True)
+
+    # Missing blocks entirely is caught with a usable message
+    response = admin_client.post(
+        "/admin/shift-setup/generate",
+        data={
+            "name": "Bad", "date_start": "2026-05-04", "date_end": "2026-05-10",
+            "shift_name[]": ["Day"], "shift_start[]": ["08:00"], "shift_end[]": ["16:00"],
+            "shift_weight[]": [""], "repeat": "week",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+    assert "at least one block" in response.get_data(as_text=True)
 
 
 def test_shift_setup_requires_admin(user_client):
