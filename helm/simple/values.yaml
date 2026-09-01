@@ -45,6 +45,9 @@ preferences:
   shiftsCsv: /app/csv/shifts.csv
   jsonPath: /app/data/preferences.json
 
+# Container timezone: "today" on the calendar and log timestamps.
+timezone: America/Chicago
+
 data:
   dir: /app/data
   # SQLite database for named schedules, taxonomy, settings, and contacts.

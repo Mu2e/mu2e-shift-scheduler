@@ -1030,10 +1030,16 @@ def calendar_view():
         active_classification["id"] if active_classification else None
     )
 
+    can_assign = (
+        current_user.is_authenticated and current_user.is_admin
+        and selected is not None and not context.get("source") and not context.get("preview")
+    )
     default_schedule_id = store.get_default_schedule_id()
     return render_template(
         "calendar.html",
         nav_active="calendar",
+        can_assign=can_assign,
+        known_people=store.list_people_names() if can_assign else [],
         tabs=tabs,
         active_tab=active_tab,
         view=view,
@@ -1050,6 +1056,45 @@ def calendar_view():
         result_files=_list_result_files(),
         schedule_files=_list_csv_files(_csv_dir()),
     )
+
+
+@bp.route("/calendar/assign", methods=["POST"])
+@admin_required
+def calendar_assign():
+    """Manually assign (or clear) one shift from the calendar context menu."""
+    schedule = None
+    try:
+        schedule_id = int(request.form.get("schedule_id", ""))
+        schedule = store.get_schedule(schedule_id)
+    except ValueError:
+        pass
+    person = request.form.get("person", "").strip()
+    return_params = {
+        "schedule": schedule["name"] if schedule else None,
+        "tab": request.form.get("tab") or None,
+        "view": request.form.get("view") or None,
+        "date": request.form.get("date") or None,
+    }
+    if schedule is None:
+        flash("Choose a stored schedule before assigning shifts.", "danger")
+        return redirect(url_for("main.calendar_view"))
+    try:
+        shift = store.assign_person(
+            schedule["id"],
+            request.form.get("shift_id", ""),
+            person,
+            saved_by=getattr(current_user, "email", ""),
+        )
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("main.calendar_view", **return_params))
+
+    label = shift.get("shift_name") or shift["shift_id"]
+    if person:
+        flash(f"Assigned {label} ({shift['date']}) to {person}.", "success")
+    else:
+        flash(f"Cleared the assignment for {label} ({shift['date']}).", "success")
+    return redirect(url_for("main.calendar_view", **return_params))
 
 
 @bp.route("/calendar/preview", methods=["POST"])

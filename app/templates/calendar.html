@@ -37,6 +37,7 @@
     background: #f1f3f5;
   }
   .calendar-day.is-today {
+    background: #e7f1ff;
     outline: 2px solid #0d6efd;
     outline-offset: -2px;
   }
@@ -45,6 +46,22 @@
     font-size: .78rem;
     font-weight: 700;
     margin-bottom: .35rem;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+  }
+  .is-today .calendar-date {
+    color: #0d6efd;
+  }
+  .today-label {
+    background: #0d6efd;
+    color: #fff;
+    border-radius: 999px;
+    font-size: .62rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    padding: .05rem .45rem;
   }
   .assignment-card {
     border-left: 4px solid #198754;
@@ -298,7 +315,10 @@
   {% if agenda.day.entries %}
   <ul class="list-group list-group-flush">
     {% for entry in agenda.day.entries %}
-    <li class="list-group-item d-flex align-items-center gap-3">
+    <li class="list-group-item d-flex align-items-center gap-3"
+        data-shift-id="{{ entry.shift_id }}"
+        data-shift-label="{{ entry.shift_name }}"
+        data-person="{{ entry.person.name if entry.person else '' }}">
       <span class="text-nowrap fw-bold">{{ entry.start_time }}&ndash;{{ entry.end_time }}</span>
       <span>
         {{ entry.shift_name }}:
@@ -331,7 +351,10 @@
       {% for week in grid.weeks %}
         {% for day in week %}
         <div class="calendar-day {{ '' if day.in_month else 'out-of-month' }} {{ 'is-today' if day.is_today }}">
-          <div class="calendar-date">{{ day.date.day }}</div>
+          <div class="calendar-date">
+            {{ day.date.day }}
+            {% if day.is_today %}<span class="today-label">Today</span>{% endif %}
+          </div>
           {% for entry in day.entries %}
           {{ calendar_entry(entry) }}
           {% endfor %}
@@ -343,6 +366,50 @@
 </section>
 {% endif %}
 
+{% if can_assign %}
+{# Right-click context menu + assign modal (admins, stored schedules only) #}
+<div id="assignContextMenu" class="dropdown-menu shadow" style="position: fixed; display: none; z-index: 1080;">
+  <h6 class="dropdown-header" id="assignMenuHeader"></h6>
+  <button type="button" class="dropdown-item" id="assignMenuAssign">Assign person&hellip;</button>
+  <button type="button" class="dropdown-item text-danger" id="assignMenuClear">Clear assignment</button>
+</div>
+
+<div class="modal fade" id="assignModal" tabindex="-1" aria-labelledby="assignModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" method="post" action="{{ url_for('main.calendar_assign') }}">
+      <input type="hidden" name="schedule_id" value="{{ selected_schedule.id }}">
+      <input type="hidden" name="shift_id" id="assignShiftId" value="">
+      <input type="hidden" name="tab" value="{{ active_tab if active_tab not in ('', '__files__') else '' }}">
+      <input type="hidden" name="view" value="{{ view }}">
+      <input type="hidden" name="date" value="{{ nav.date }}">
+      <div class="modal-header">
+        <h5 class="modal-title" id="assignModalLabel">Assign shift</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-2" id="assignModalShift"></p>
+        <label class="form-label" for="assignPerson">Person</label>
+        <input class="form-control" type="text" id="assignPerson" name="person"
+               list="peopleList" placeholder="Start typing a name&hellip;" autocomplete="off">
+        <datalist id="peopleList">
+          {% for name in known_people %}
+          <option value="{{ name }}"></option>
+          {% endfor %}
+        </datalist>
+        <div class="form-text">
+          Known shifters and users are suggested; any name can be entered.
+          A multi-day block is assigned as a whole. Leave blank to clear.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Assign</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 {% if not preview and active_tab not in ('', '__files__') and not tab_schedules %}
 <div class="alert alert-info mt-3">
   No schedules in this classification yet.
@@ -351,5 +418,65 @@
   <a href="{{ url_for('main.schedules_page') }}">Schedules</a> page.
   {% endif %}
 </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if can_assign %}
+<script>
+(function () {
+  "use strict";
+  var menu = document.getElementById("assignContextMenu");
+  var modalEl = document.getElementById("assignModal");
+  var current = null;   // the entry element the menu was opened on
+
+  function hideMenu() { menu.style.display = "none"; }
+
+  document.querySelectorAll("[data-shift-id]").forEach(function (el) {
+    el.addEventListener("contextmenu", function (e) {
+      e.preventDefault();
+      current = el;
+      var person = el.dataset.person;
+      document.getElementById("assignMenuHeader").textContent =
+        el.dataset.shiftLabel + (person ? " — " + person : " — Empty");
+      menu.style.display = "block";
+      // Keep the menu inside the viewport.
+      var x = Math.min(e.clientX, window.innerWidth - menu.offsetWidth - 8);
+      var y = Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 8);
+      menu.style.left = x + "px";
+      menu.style.top = y + "px";
+    });
+    el.title = "Right-click to assign (admin)";
+  });
+
+  document.getElementById("assignMenuAssign").addEventListener("click", function () {
+    hideMenu();
+    if (!current) return;
+    document.getElementById("assignShiftId").value = current.dataset.shiftId;
+    document.getElementById("assignModalShift").textContent =
+      current.dataset.shiftLabel + " (" + current.dataset.shiftId + ")";
+    var personInput = document.getElementById("assignPerson");
+    personInput.value = current.dataset.person || "";
+    var modal = new bootstrap.Modal(modalEl);
+    modal.show();
+    modalEl.addEventListener("shown.bs.modal", function () { personInput.focus(); }, { once: true });
+  });
+
+  document.getElementById("assignMenuClear").addEventListener("click", function () {
+    hideMenu();
+    if (!current) return;
+    if (!current.dataset.person) return;
+    if (!confirm("Clear the assignment for " + current.dataset.shiftLabel +
+                 " (" + current.dataset.person + ")?")) return;
+    document.getElementById("assignShiftId").value = current.dataset.shiftId;
+    document.getElementById("assignPerson").value = "";
+    modalEl.querySelector("form").submit();
+  });
+
+  document.addEventListener("click", hideMenu);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") hideMenu(); });
+  window.addEventListener("scroll", hideMenu, true);
+})();
+</script>
 {% endif %}
 {% endblock %}

@@ -36,6 +36,14 @@
              {% if nav_active == 'calendar' %}aria-current="page"{% endif %}
              href="{{ url_for('main.calendar_view') }}">Calendar</a>
         </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle {{ 'active' if nav_active == 'preferences' }}" href="#"
+             role="button" data-bs-toggle="dropdown" aria-expanded="false">Preferences</a>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="{{ url_for('preferences.index') }}">Submit Preferences</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('preferences.current') }}">View Preferences</a></li>
+          </ul>
+        </li>
         <li class="nav-item">
           <a class="nav-link {{ 'active' if nav_active == 'schedules' }}"
              {% if nav_active == 'schedules' %}aria-current="page"{% endif %}
@@ -45,14 +53,6 @@
           <a class="nav-link {{ 'active' if nav_active == 'scheduler' }}"
              {% if nav_active == 'scheduler' %}aria-current="page"{% endif %}
              href="{{ url_for('main.index') }}">Scheduler</a>
-        </li>
-        <li class="nav-item dropdown">
-          <a class="nav-link dropdown-toggle {{ 'active' if nav_active == 'preferences' }}" href="#"
-             role="button" data-bs-toggle="dropdown" aria-expanded="false">Preferences</a>
-          <ul class="dropdown-menu">
-            <li><a class="dropdown-item" href="{{ url_for('preferences.index') }}">Submit Preferences</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('preferences.current') }}">View Preferences</a></li>
-          </ul>
         </li>
         {% if session.get('results_path') %}
         <li class="nav-item">

@@ -29,7 +29,10 @@
 {% endmacro %}
 
 {% macro calendar_entry(entry) %}
-<div class="assignment-card {{ 'empty-shift' if not entry.person }} {{ 'span-cont' if entry.span.is_multi and entry.span.day_index > 1 }}">
+<div class="assignment-card {{ 'empty-shift' if not entry.person }} {{ 'span-cont' if entry.span.is_multi and entry.span.day_index > 1 }}"
+     data-shift-id="{{ entry.shift_id }}"
+     data-shift-label="{{ entry.shift_name }}"
+     data-person="{{ entry.person.name if entry.person else '' }}">
   <div class="assignment-time">{{ entry.start_time }}&ndash;{{ entry.end_time }}</div>
   <div class="fw-semibold">
     {{ entry.shift_name }}:
