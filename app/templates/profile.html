@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}My Profile — Mu2e Shift Scheduler{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <h2 class="mb-1">My Profile</h2>
+    <p class="text-muted mb-4">
+      Your contact information is shown when your name appears on a shift
+      calendar, so other shifters can reach you.
+    </p>
+
+    <div class="card">
+      <div class="card-body">
+        <dl class="row mb-4">
+          <dt class="col-sm-3">Name</dt>
+          <dd class="col-sm-9">{{ current_user.name }}</dd>
+          <dt class="col-sm-3">Email</dt>
+          <dd class="col-sm-9"><code>{{ current_user.email }}</code></dd>
+          <dt class="col-sm-3">Account</dt>
+          <dd class="col-sm-9">
+            {% if current_user.auth_provider == "local" %}
+            <span class="badge bg-secondary">Password</span>
+            {% else %}
+            <span class="badge bg-primary">Fermilab SSO</span>
+            {% endif %}
+            {% if current_user.is_admin %}<span class="badge bg-warning text-dark ms-1">admin</span>{% endif %}
+          </dd>
+        </dl>
+
+        <form method="post" action="{{ url_for('auth.profile') }}" class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label" for="phone">Phone</label>
+            <input class="form-control" type="tel" id="phone" name="phone"
+                   value="{{ current_user.phone }}" placeholder="+1 630 840 0000">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="institution">Institution</label>
+            <input class="form-control" type="text" id="institution" name="institution"
+                   value="{{ current_user.institution }}" placeholder="e.g. Fermilab">
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-primary">Save contact info</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <p class="text-muted small mt-3">
+      Name and email come from your login provider and cannot be edited here.
+      Administrators can also update contact info on the Users page.
+    </p>
+  </div>
+</div>
+{% endblock %}

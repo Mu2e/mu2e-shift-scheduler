@@ -22,6 +22,9 @@ class User(UserMixin):
         self.name = row["name"] or row["email"]
         self.role = row["role"] or "user"
         self.auth_provider = row["auth_provider"] or "local"
+        keys = row.keys()
+        self.phone = (row["phone"] if "phone" in keys else "") or ""
+        self.institution = (row["institution"] if "institution" in keys else "") or ""
 
     @property
     def is_admin(self) -> bool:
@@ -65,6 +68,11 @@ def init_auth_db(app) -> None:
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_users_oidc_sub ON users(oidc_sub)")
+        # Migration: contact fields for existing databases.
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+        for column in ("phone", "institution"):
+            if column not in existing:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
 
 
 def seed_admin(app) -> None:
@@ -134,7 +142,8 @@ def list_users() -> list[sqlite3.Row]:
     with connect() as conn:
         return conn.execute(
             """
-            SELECT id, email, name, role, auth_provider, created_at, updated_at, last_login_at
+            SELECT id, email, name, role, auth_provider, phone, institution,
+                   created_at, updated_at, last_login_at
               FROM users
              ORDER BY role = 'admin' DESC, email COLLATE NOCASE
             """
@@ -167,6 +176,21 @@ def update_user_role(user_id: str, role: str, acting_user_id: str) -> tuple[bool
     if str(user_id) == str(acting_user_id) and role != "admin":
         return True, "Your role was updated. You are no longer an administrator."
     return True, f"Updated {row['email']} to {role}."
+
+
+def update_user_contact(user_id: str, phone: str, institution: str) -> Optional[User]:
+    """Set a user's contact fields; returns the updated User (or None)."""
+    with connect() as conn:
+        row = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row:
+            return None
+        conn.execute(
+            "UPDATE users SET phone = ?, institution = ?, updated_at = ? WHERE id = ?",
+            (phone.strip(), institution.strip(), _utcnow(), user_id),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    return User(row)
 
 
 @login_manager.user_loader

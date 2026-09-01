@@ -543,11 +543,32 @@ def set_preferences_schedule_id(schedule_id: int | None) -> None:
 # Contacts
 # ---------------------------------------------------------------------------
 
-def upsert_contact(name: str, *, email: str = "", phone: str = "", institution: str = "") -> None:
+def upsert_contact(name: str, *, email: str = "", phone: str = "", institution: str = "",
+                   replace: bool = False) -> None:
+    """Insert or update a contact.
+
+    By default blank fields never erase stored values (CSV rows are often
+    partial). With replace=True the fields are set verbatim — used when a
+    person edits their own profile, which is authoritative.
+    """
     name = (name or "").strip()
     if not name:
         return
     with connect() as conn:
+        if replace:
+            conn.execute(
+                """
+                INSERT INTO contacts (name, email, phone, institution, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    email = excluded.email,
+                    phone = excluded.phone,
+                    institution = excluded.institution,
+                    updated_at = excluded.updated_at
+                """,
+                (name, email.strip(), phone.strip(), institution.strip(), _utcnow()),
+            )
+            return
         conn.execute(
             """
             INSERT INTO contacts (name, email, phone, institution, updated_at)
@@ -592,26 +613,26 @@ def get_contact(name: str) -> dict | None:
             "source": "contacts",
         }
 
-    # Fallback: a user who has logged in (name match, or email local part).
+    # Fallback: a user account (name match, or email local part).
     from app import auth
 
     with auth.connect() as conn:
         user = conn.execute(
-            "SELECT name, email FROM users WHERE name = ? COLLATE NOCASE",
+            "SELECT name, email, phone, institution FROM users WHERE name = ? COLLATE NOCASE",
             (name,),
         ).fetchone()
         if user is None:
             local_part = name.lower().replace(" ", ".")
             user = conn.execute(
-                "SELECT name, email FROM users WHERE lower(email) = ? OR lower(email) LIKE ?",
+                "SELECT name, email, phone, institution FROM users WHERE lower(email) = ? OR lower(email) LIKE ?",
                 (name.lower(), f"{local_part}@%"),
             ).fetchone()
     if user:
         return {
             "name": name,
             "email": user["email"],
-            "phone": "",
-            "institution": row["institution"] if row else "",
+            "phone": user["phone"] or "",
+            "institution": user["institution"] or (row["institution"] if row else ""),
             "source": "users",
         }
     if row and row["institution"]:
