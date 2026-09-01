@@ -10,6 +10,12 @@
 <p class="text-muted">
   JSON file: <code>{{ json_path }}</code> &mdash;
   {{ submissions|length }} submission(s) total.
+  {% if prefs_csv_name %}
+  <br>Solver people CSV:
+  <a href="{{ url_for('main.download_stored_file', dir='csv', name=prefs_csv_name) }}">
+    <code>{{ prefs_csv_name }}</code></a>
+  (regenerated on every submission for the active preference schedule).
+  {% endif %}
 </p>
 
 {% if submissions %}

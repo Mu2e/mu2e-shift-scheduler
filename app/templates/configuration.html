@@ -83,8 +83,11 @@
               {% endfor %}
             </select>
             <div class="form-text">
-              The Submit Preferences page lists exactly this schedule's shifts.
-              With no selection it falls back to <code>{{ preferences_path }}</code>.
+              The Submit Preferences page lists exactly this schedule's shifts, and
+              submissions are written server-side to
+              <code>{{ csv_dir }}/&lt;schedule-slug&gt;-prefs.csv</code> in the solver's
+              people-CSV format. With no selection it falls back to
+              <code>{{ preferences_path }}</code>.
             </div>
           </div>
           <button type="submit" class="btn btn-primary">Save</button>
