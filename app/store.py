@@ -486,6 +486,54 @@ def save_assignments(schedule_id: int, results: list[dict], saved_by: str) -> No
         )
 
 
+def assign_person(schedule_id: int, shift_id: str, person: str, saved_by: str) -> dict:
+    """Manually assign (or clear, with an empty person) one shift.
+
+    Returns the shift row for confirmation messages. Contact details for the
+    person are filled from the contacts/users tables when known.
+    """
+    shift_id = (shift_id or "").strip()
+    person = (person or "").strip()
+    with connect() as conn:
+        shift = conn.execute(
+            "SELECT * FROM schedule_shifts WHERE schedule_id = ? AND shift_id = ?",
+            (schedule_id, shift_id),
+        ).fetchone()
+    if shift is None:
+        raise ValueError("That shift does not exist in the selected schedule.")
+
+    contact = get_contact(person) if person else None
+    save_assignments(
+        schedule_id,
+        [{
+            "shift_id": shift_id,
+            "person": person,
+            "institution": contact.get("institution", "") if contact else "",
+            "email": contact.get("email", "") if contact else "",
+            "phone": contact.get("phone", "") if contact else "",
+            "is_preferred": None,
+            "pref_rank": None,
+            "points": shift["points"],
+        }],
+        saved_by=saved_by,
+    )
+    return dict(shift)
+
+
+def list_people_names() -> list[str]:
+    """Known people for assignment suggestions: contacts plus user accounts."""
+    names: dict[str, str] = {}
+    with connect() as conn:
+        for row in conn.execute("SELECT name FROM contacts"):
+            names.setdefault(row["name"].strip().lower(), row["name"].strip())
+    from app import auth
+
+    with auth.connect() as conn:
+        for row in conn.execute("SELECT name FROM users WHERE name != ''"):
+            names.setdefault(row["name"].strip().lower(), row["name"].strip())
+    return sorted(names.values(), key=str.lower)
+
+
 def get_assignments(schedule_id: int) -> dict[str, dict]:
     with connect() as conn:
         rows = conn.execute(

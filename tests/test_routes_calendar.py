@@ -94,6 +94,74 @@ def test_unknown_schedule_name_flashes_warning(admin_client, app):
     assert "No schedule named" in html
 
 
+def test_today_is_highlighted_in_current_month(admin_client, app):
+    _make_schedule(app)
+    # Default anchor snaps to the schedule's month (no entries today), so
+    # request the current month explicitly.
+    from datetime import date
+    html = admin_client.get(
+        f"/calendar?schedule=Fall+2026&view=month&date={date.today().isoformat()}"
+    ).get_data(as_text=True)
+    assert html.count('<span class="today-label">Today</span>') == 1
+    assert "is-today" in html
+
+
+def test_admin_assign_and_clear_from_calendar(admin_client, app):
+    sid = _make_schedule(app)
+    with app.app_context():
+        store.upsert_contact("Carol Chen", email="carol@fnal.gov", institution="Caltech")
+
+    response = admin_client.post(
+        "/calendar/assign",
+        data={"schedule_id": str(sid), "shift_id": "day-w1", "person": "Carol Chen",
+              "view": "month", "date": "2026-05-01"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    with app.app_context():
+        assignment = store.get_assignments(sid)["day-w1"]
+        assert assignment["person"] == "Carol Chen"
+        assert assignment["institution"] == "Caltech"  # filled from contacts
+
+    html = admin_client.get(
+        "/calendar?schedule=Fall+2026&view=month&date=2026-05-01"
+    ).get_data(as_text=True)
+    assert html.count("Carol Chen") >= 4  # every covered day
+    assert "assignModal" in html          # admin gets the assign UI
+    assert 'data-shift-id="day-w1"' in html
+
+    # Clearing: empty person
+    admin_client.post(
+        "/calendar/assign",
+        data={"schedule_id": str(sid), "shift_id": "day-w1", "person": ""},
+    )
+    with app.app_context():
+        assert store.get_assignments(sid)["day-w1"]["person"] == ""
+
+
+def test_assign_requires_admin_and_valid_shift(user_client, admin_client, app):
+    sid = _make_schedule(app)
+    response = user_client.post(
+        "/calendar/assign",
+        data={"schedule_id": str(sid), "shift_id": "day-w1", "person": "Mallory"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302  # bounced by admin_required
+    with app.app_context():
+        assert "day-w1" not in store.get_assignments(sid)
+
+    response = admin_client.post(
+        "/calendar/assign",
+        data={"schedule_id": str(sid), "shift_id": "no-such-shift", "person": "Bob"},
+        follow_redirects=True,
+    )
+    assert "does not exist" in response.get_data(as_text=True)
+
+    # Non-admin calendars carry no assign UI
+    html = user_client.get("/calendar?schedule=Fall+2026").get_data(as_text=True)
+    assert "assignModal" not in html
+
+
 def test_legacy_file_source_still_works(admin_client, app):
     from pathlib import Path
     csv_text = (

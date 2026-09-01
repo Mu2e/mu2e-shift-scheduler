@@ -6,6 +6,7 @@ metadata:
   labels:
     {{- include "mu2e-shifts-simple.labels" . | nindent 4 }}
 data:
+  TZ: {{ .Values.timezone | default "America/Chicago" | quote }}
   MAX_CONTENT_LENGTH: {{ .Values.flask.maxContentLength | quote }}
   PREFERRED_URL_SCHEME: {{ .Values.flask.preferredUrlScheme | quote }}
   SCHEDULER_CONFIG: {{ .Values.scheduler.configPath | quote }}
