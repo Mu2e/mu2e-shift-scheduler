@@ -11,7 +11,7 @@ license = { text = "Apache-2.0" }
 authors = [{ name = "Mu2e Collaboration" }]
 requires-python = ">=3.10"
 dependencies = [
-    "pulp>=2.8",
+    "pulp>=2.8,<4",
     "flask>=3.0",
     "pyyaml>=6.0",
     "gunicorn>=22.0",
