@@ -8,12 +8,22 @@ SHIFTS_CSV = (
     "s2,2026-04-02,08:00,16:00,1.0\n"
 )
 
+COPYRIGHT = ("Copyright 2026 Andrew Norman for Fermi Forward Discovery Group LLC, "
+             "All Rights reserved")
+
 
 def test_pages_render_for_admin(admin_client):
     for url in ("/", "/calendar", "/schedules", "/schedule", "/configuration",
                 "/admin/shift-setup", "/about", "/admin/users"):
         response = admin_client.get(url, follow_redirects=True)
         assert response.status_code == 200, f"{url} -> {response.status_code}"
+        assert COPYRIGHT in response.get_data(as_text=True), f"{url} missing copyright"
+
+
+def test_login_page_has_copyright(client):
+    response = client.get("/login")
+    assert response.status_code == 200
+    assert COPYRIGHT in response.get_data(as_text=True)
 
 
 def test_login_redirects_to_calendar(admin_client):
