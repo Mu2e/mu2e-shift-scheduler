@@ -11,6 +11,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    session,
     url_for,
 )
 from flask_login import current_user
@@ -476,3 +477,44 @@ def settings():
     else:
         flash("Unknown settings form.", "danger")
     return redirect(url_for("main.configuration"))
+
+
+# ---------------------------------------------------------------------------
+# API tokens
+# ---------------------------------------------------------------------------
+
+@bp.route("/api-tokens")
+@admin_required
+def api_tokens():
+    return render_template(
+        "admin_api_tokens.html",
+        tokens=store.list_api_tokens(),
+        new_token=session.pop("new_api_token", None),
+        nav_active="admin",
+    )
+
+
+@bp.route("/api-tokens/create", methods=["POST"])
+@admin_required
+def api_tokens_create():
+    try:
+        _token_id, plaintext = store.create_api_token(
+            request.form.get("label", ""), current_user.email
+        )
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("admin.api_tokens"))
+    # Shown exactly once on the next page load, then forgotten.
+    session["new_api_token"] = plaintext
+    flash("Token created. Copy it now; it will not be shown again.", "success")
+    return redirect(url_for("admin.api_tokens"))
+
+
+@bp.route("/api-tokens/<int:token_id>/revoke", methods=["POST"])
+@admin_required
+def api_tokens_revoke(token_id: int):
+    if store.revoke_api_token(token_id):
+        flash("Token revoked.", "success")
+    else:
+        flash("Token not found or already revoked.", "warning")
+    return redirect(url_for("admin.api_tokens"))

@@ -109,6 +109,11 @@ The package is pip-installable (`pyproject.toml`); the venv gets a
 - **Server file storage** — every browse button accepts a local file or a
   file from container storage; upload, download, and export endpoints
   cover both the CSV and data directories.
+- **Token API** — `GET /api/v1/on-duty` reports who is on duty at a given
+  instant (with contact details), plus `/classifications` and `/schedules`.
+  Bearer tokens are minted and revoked on Admin > API Tokens, so consumers
+  such as the Mu2e Bulletin Board need no SSO session. See
+  [docs/API.md](docs/API.md) and `scripts/shifts_api_probe.py`.
 
 ---
 

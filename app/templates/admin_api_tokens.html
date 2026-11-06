@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}API Tokens — Mu2e Shift Scheduler{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-4">
+  <div>
+    <h2 class="mb-1">API Tokens</h2>
+    <p class="text-muted mb-0">
+      Bearer tokens for <code>/api/v1</code>. Clients send
+      <code>Authorization: Bearer &lt;token&gt;</code>; no SSO session is needed.
+    </p>
+  </div>
+</div>
+
+{% if new_token %}
+<div class="alert alert-success">
+  <div class="fw-semibold mb-1">New token (shown once)</div>
+  <div class="input-group">
+    <input type="text" class="form-control font-monospace" value="{{ new_token }}" readonly
+           id="newToken" aria-label="New API token">
+    <button class="btn btn-outline-secondary" type="button"
+            onclick="navigator.clipboard.writeText(document.getElementById('newToken').value)">Copy</button>
+  </div>
+  <div class="small mt-1">Store it in the consumer's secret store now. Only a hash is kept here.</div>
+</div>
+{% endif %}
+
+<div class="card mb-4">
+  <div class="card-header fw-semibold">Create a token</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('admin.api_tokens_create') }}" class="row g-2 align-items-end">
+      <div class="col-md-6">
+        <label class="form-label" for="label">Label</label>
+        <input type="text" class="form-control" id="label" name="label" required
+               placeholder="e.g. mu2e-bulletin-board (prod)">
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Create token</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header fw-semibold">Issued tokens</div>
+  <div class="card-body">
+    {% if tokens %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Label</th><th>Prefix</th><th>Created by</th><th>Created</th>
+            <th>Last used</th><th>Status</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in tokens %}
+          <tr class="{{ 'text-muted' if t.revoked_at }}">
+            <td>{{ t.label }}</td>
+            <td><code>{{ t.prefix }}…</code></td>
+            <td>{{ t.created_by or "—" }}</td>
+            <td class="small">{{ t.created_at }}</td>
+            <td class="small">{{ t.last_used_at or "Never" }}</td>
+            <td>
+              {% if t.revoked_at %}
+              <span class="badge bg-secondary">Revoked {{ t.revoked_at[:10] }}</span>
+              {% else %}
+              <span class="badge bg-success">Active</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if not t.revoked_at %}
+              <form method="post" action="{{ url_for('admin.api_tokens_revoke', token_id=t.id) }}" class="m-0">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Revoke</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">No tokens have been issued.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="mt-4 small text-muted">
+  Endpoints: <code>GET /api/v1/on-duty?at=&lt;iso&gt;&amp;classification=&lt;slug,…&gt;</code>,
+  <code>GET /api/v1/classifications</code>, <code>GET /api/v1/schedules</code>,
+  <code>GET /api/v1/health</code> (no token). See <code>docs/API.md</code>.
+</div>
+{% endblock %}

@@ -34,7 +34,9 @@ Configuration precedence: command line > environment > `.env` > `config/config.y
   block-CSV serialization), `exporter.py` (CSV/JSON export, stats).
 - `app/` — Flask blueprints: `routes.py` (calendar, named schedules, solve,
   results, files API), `admin_routes.py` (`/admin`: shift setup, taxonomy,
-  settings), `preferences.py` (collects preferences for the admin-selected
+  settings, API tokens), `api_routes.py` (`/api/v1`: bearer-token JSON API —
+  `on-duty`, `classifications`, `schedules`; the login guard in `auth.py`
+  skips the `api.` blueprint and `token_required` returns 401 JSON instead), `preferences.py` (collects preferences for the admin-selected
   stored schedule — `settings.preferences_schedule_id` — falling back to the
   legacy `PREFERENCES_SHIFTS_CSV` file when unset), `auth_routes.py` + `auth.py` (flask-login,
   Fermilab OIDC, stdlib-sqlite3 users DB, global login requirement),
@@ -95,4 +97,10 @@ covered; page-render smoke tests catch template `url_for` breakage.
 - Person string `""`/`UNASSIGNED` renders as "Empty" on calendars.
 - All app SQL stays in `app/store.py` (Postgres-compatible `ON CONFLICT`);
   auth SQL stays in `app/auth.py`.
+- API tokens live in `app.sqlite` (`api_tokens`), hashed with SHA-256; the
+  plaintext is shown once via the session. `store.on_duty(at)` is the single
+  "who is on now" query: half-open intervals, midnight wrap when
+  `end_time <= start_time`, multi-day blocks via `expand_shift_days`.
+- Default taxonomy now has four entries; "Oncall Cryo Experts" was added
+  (2026-11-06) so the bulletin board's Cryo On-Call line has a source.
 - New scripts get a man page in `man/` (`.1`, groff) and support `--help`.

@@ -21,7 +21,12 @@ from flask import current_app
 from scheduler.blocks import slugify
 from scheduler.loader import Shift, _default_points
 
-DEFAULT_CLASSIFICATIONS = ["General Shifts", "Run Coordinators", "Oncall DAQ Experts"]
+DEFAULT_CLASSIFICATIONS = [
+    "General Shifts",
+    "Run Coordinators",
+    "Oncall DAQ Experts",
+    "Oncall Cryo Experts",
+]
 
 SETTING_DEFAULT_SCHEDULE = "default_schedule_id"
 SETTING_PREFERENCES_SCHEDULE = "preferences_schedule_id"
@@ -111,6 +116,16 @@ CREATE TABLE IF NOT EXISTS email_templates (
     updated_at        TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS api_tokens (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    label        TEXT NOT NULL DEFAULT '',
+    prefix       TEXT NOT NULL,
+    token_hash   TEXT NOT NULL UNIQUE,
+    created_by   TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL,
+    last_used_at TEXT,
+    revoked_at   TEXT
+);
 CREATE TABLE IF NOT EXISTS email_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     sent_at     TEXT NOT NULL,
@@ -950,3 +965,173 @@ def get_contact(name: str) -> dict | None:
             "source": "contacts",
         }
     return None
+
+
+# ---------------------------------------------------------------------------
+# API tokens (bearer credentials for /api/v1, managed by administrators)
+# ---------------------------------------------------------------------------
+
+API_TOKEN_PREFIX = "mu2e_"
+
+
+def _hash_token(token: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def create_api_token(label: str, created_by: str) -> tuple[int, str]:
+    """Mint a new bearer token. Returns (row id, plaintext token).
+
+    Only the SHA-256 of the token is stored; the plaintext is shown to the
+    administrator exactly once and cannot be recovered afterwards."""
+    import secrets
+
+    label = (label or "").strip()
+    if not label:
+        raise ValueError("A label is required so the token can be identified later.")
+    token = API_TOKEN_PREFIX + secrets.token_urlsafe(32)
+    with connect() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO api_tokens (label, prefix, token_hash, created_by, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (label, token[: len(API_TOKEN_PREFIX) + 8], _hash_token(token), created_by, _utcnow()),
+        )
+        conn.commit()
+        return int(cur.lastrowid), token
+
+
+def list_api_tokens() -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, label, prefix, created_by, created_at, last_used_at, revoked_at
+              FROM api_tokens
+             ORDER BY revoked_at IS NOT NULL, id DESC
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def revoke_api_token(token_id: int) -> bool:
+    with connect() as conn:
+        cur = conn.execute(
+            "UPDATE api_tokens SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+            (_utcnow(), token_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def verify_api_token(token: str) -> dict | None:
+    """Return the token row for a live token (and stamp last_used_at), else None."""
+    token = (token or "").strip()
+    if not token.startswith(API_TOKEN_PREFIX):
+        return None
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL",
+            (_hash_token(token),),
+        ).fetchone()
+        if row is None:
+            return None
+        conn.execute(
+            "UPDATE api_tokens SET last_used_at = ? WHERE id = ?", (_utcnow(), row["id"])
+        )
+        conn.commit()
+    return dict(row)
+
+
+# ---------------------------------------------------------------------------
+# Who is on duty right now (served by /api/v1/on-duty)
+# ---------------------------------------------------------------------------
+
+def on_duty(at) -> list[dict]:
+    """Every assigned shift, across all stored schedules, whose time window
+    covers the naive local datetime ``at``.
+
+    Multi-day blocks are expanded with expand_shift_days; a shift whose
+    end_time is at or before its start_time wraps past midnight, so a
+    20:00-04:00 night shift dated D covers [D 20:00, D+1 04:00). Rows are
+    ordered by classification sort order, then schedule name, then start.
+    """
+    from datetime import datetime, time, timedelta
+
+    from scheduler.blocks import expand_shift_days
+
+    at_date = at.date()
+    # A shift can only cover ``at`` if it starts today or yesterday (wrap),
+    # or is a multi-day block spanning today.
+    earliest = (at_date - timedelta(days=1)).isoformat()
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT ss.*, a.person, a.institution AS assigned_institution,
+                   s.id AS schedule_id, s.name AS schedule_name, s.slug AS schedule_slug,
+                   c.name AS classification_name, c.slug AS classification_slug,
+                   c.sort_order AS classification_order
+              FROM assignments a
+              JOIN schedule_shifts ss
+                ON ss.schedule_id = a.schedule_id AND ss.shift_id = a.shift_id
+              JOIN schedules s ON s.id = a.schedule_id
+              LEFT JOIN classifications c ON c.id = s.classification_id
+             WHERE a.person != '' AND a.person != 'UNASSIGNED'
+               AND ss.date <= ?
+               AND ((ss.date_end != '' AND ss.date_end >= ?) OR (ss.date_end = '' AND ss.date >= ?))
+            """,
+            (at_date.isoformat(), earliest, earliest),
+        ).fetchall()
+
+    def _parse_time(text: str) -> time | None:
+        try:
+            hh, mm = str(text).strip().split(":")[:2]
+            return time(int(hh), int(mm))
+        except (TypeError, ValueError):
+            return None
+
+    contact_cache: dict = {}
+    hits = []
+    for row in rows:
+        row = dict(row)
+        start_t = _parse_time(row["start_time"])
+        end_t = _parse_time(row["end_time"])
+        if start_t is None or end_t is None:
+            continue
+        for day in expand_shift_days(row["date"], row.get("date_end", ""), row.get("days", "")):
+            starts = datetime.combine(day, start_t)
+            ends = datetime.combine(day, end_t)
+            if ends <= starts:
+                ends += timedelta(days=1)
+            if starts <= at < ends:
+                name = row["person"]
+                if name not in contact_cache:
+                    contact_cache[name] = get_contact(name) or {}
+                contact = contact_cache[name]
+                hits.append({
+                    "classification": row["classification_name"] or "",
+                    "classification_slug": row["classification_slug"] or "",
+                    "classification_order": row["classification_order"] or 0,
+                    "schedule": row["schedule_name"],
+                    "schedule_id": row["schedule_id"],
+                    "shift_id": row["shift_id"],
+                    "shift_name": row["shift_name"] or row["block_type"] or row["shift_id"],
+                    "date": row["date"],
+                    "date_end": row.get("date_end", ""),
+                    "start_time": row["start_time"],
+                    "end_time": row["end_time"],
+                    "starts_at": starts.isoformat(timespec="minutes"),
+                    "ends_at": ends.isoformat(timespec="minutes"),
+                    "person": {
+                        "name": name,
+                        "email": contact.get("email", ""),
+                        "phone": contact.get("phone", ""),
+                        "institution": row.get("assigned_institution") or contact.get("institution", ""),
+                    },
+                })
+                break  # one covering day is enough for this shift
+    hits.sort(key=lambda h: (h["classification_order"], h["classification"], h["schedule"], h["starts_at"], h["shift_id"]))
+    for h in hits:
+        h.pop("classification_order", None)
+    return hits

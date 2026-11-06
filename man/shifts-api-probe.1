@@ -1,0 +1,59 @@
+.TH SHIFTS-API-PROBE 1 "2026-11-06" "Mu2e Shift Scheduler v1.1.0" "Mu2e Shift Scheduler"
+.SH NAME
+shifts_api_probe.py \- query the Mu2e Shift Scheduler token API
+.SH SYNOPSIS
+.B scripts/shifts_api_probe.py
+[\fB\-\-base\-url\fR \fIURL\fR]
+[\fB\-\-token\fR \fITOKEN\fR]
+[\fB\-\-endpoint\fR \fIon-duty\fR|\fIclassifications\fR|\fIschedules\fR|\fIhealth\fR]
+[\fB\-\-at\fR \fIISO\fR]
+[\fB\-\-classification\fR \fISLUGS\fR]
+[\fB\-\-timeout\fR \fISEC\fR]
+[\fB\-\-json\fR]
+[\fB\-\-insecure\fR]
+.SH DESCRIPTION
+Diagnostic client for the bearer-token JSON API served under
+.IR /api/v1 .
+It first calls
+.I /api/v1/health
+(no token), then the requested endpoint with
+.BR "Authorization: Bearer" .
+Use it to confirm a token minted on the Admin > API Tokens page works
+against a deployment, or to see exactly what the bulletin board will receive.
+.SH OPTIONS
+.TP
+.BI \-\-base\-url " URL"
+Scheduler base URL. Default: \fBSHIFTS_API_URL\fR, else
+.IR http://127.0.0.1:8001 .
+.TP
+.BI \-\-token " TOKEN"
+Bearer token. Default: \fBSHIFTS_API_TOKEN\fR from the environment or
+.IR .env .
+.TP
+.BI \-\-endpoint " NAME"
+Which endpoint to call. Default
+.BR on-duty .
+.TP
+.BI \-\-at " ISO"
+Datetime for \fBon-duty\fR (ISO-8601, naive = America/Chicago). Default: now.
+.TP
+.BI \-\-classification " SLUGS"
+Comma-separated classification slugs to keep, e.g.
+.IR run-coordinators,oncall-daq-experts .
+.TP
+.B \-\-json
+Print the raw JSON body instead of the formatted table.
+.TP
+.B \-\-insecure
+Skip TLS certificate verification (local test instances only).
+.SH EXIT STATUS
+0 success; 1 transport or server error; 2 usage error; 3 token rejected (401).
+.SH EXAMPLES
+.nf
+    scripts/shifts_api_probe.py --base-url https://mu2e-shifts.fnal.gov --token mu2e_abc...
+    SHIFTS_API_TOKEN=mu2e_abc... scripts/shifts_api_probe.py --at 2026-11-06T22:00 --json
+    scripts/shifts_api_probe.py --endpoint classifications
+.fi
+.SH SEE ALSO
+.BR mu2e-shift-scheduler (1),
+.I docs/API.md
