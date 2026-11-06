@@ -68,6 +68,7 @@ def create_app(
     app.config["SMTP_PORT"] = int(os.environ.get("SMTP_PORT", "25"))
     app.config["SMTP_FROM"] = os.environ.get("SMTP_FROM", "mu2e-shifts@fnal.gov").strip()
     app.config["SMTP_STARTTLS"] = os.environ.get("SMTP_STARTTLS", "0") == "1"
+    app.config["API_TIMEZONE"] = os.environ.get("API_TIMEZONE", "America/Chicago").strip()
 
     from .routes import bp
     app.register_blueprint(bp)
@@ -77,6 +78,9 @@ def create_app(
 
     from .admin_routes import bp as admin_bp
     app.register_blueprint(admin_bp)
+
+    from .api_routes import bp as api_bp
+    app.register_blueprint(api_bp)
 
     from .auth import init_auth_db, init_login, seed_admin
     from .auth_routes import bp as auth_bp

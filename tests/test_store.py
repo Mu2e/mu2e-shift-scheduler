@@ -23,11 +23,11 @@ def _sample_shifts(prefix="s", n=2):
 def test_init_seeds_default_classifications(app):
     with app.app_context():
         names = [c["name"] for c in store.list_classifications()]
-    assert names == ["General Shifts", "Run Coordinators", "Oncall DAQ Experts"]
+    assert names == ["General Shifts", "Run Coordinators", "Oncall DAQ Experts", "Oncall Cryo Experts"]
     # Re-init is idempotent
     store.init_app_db(app)
     with app.app_context():
-        assert len(store.list_classifications()) == 3
+        assert len(store.list_classifications()) == 4
 
 
 def test_classification_crud(app):

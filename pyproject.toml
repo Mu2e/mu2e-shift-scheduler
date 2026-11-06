@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mu2e-shift-scheduler"
-version = "1.0.0"
+version = "1.1.0"
 description = "ILP-based operations shift scheduler and calendar for the Mu2e experiment"
 readme = "README.md"
 license = { text = "Apache-2.0" }

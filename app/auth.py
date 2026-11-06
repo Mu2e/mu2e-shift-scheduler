@@ -273,6 +273,9 @@ def init_login(app) -> None:
             return None
         if request.endpoint is None:
             return None
+        # /api/v1 authenticates with bearer tokens, not the login session.
+        if request.endpoint.startswith("api."):
+            return None
         if not current_user.is_authenticated:
             return redirect(url_for("auth.login", next=request.full_path.rstrip("?")))
         return None
