@@ -104,3 +104,10 @@ covered; page-render smoke tests catch template `url_for` breakage.
 - Default taxonomy now has four entries; "Oncall Cryo Experts" was added
   (2026-11-06) so the bulletin board's Cryo On-Call line has a source.
 - New scripts get a man page in `man/` (`.1`, groff) and support `--help`.
+- `/profile` is self-service: display name, contact email override, office/mobile
+  phone, institution, chat handle, timezone, alternate contact (`auth.PROFILE_FIELDS`,
+  mirrored to `contacts` via `store.CONTACT_EXTRA_FIELDS`). A display-name change
+  renames `assignments.person`, the `contacts` row, and preference submissions
+  (`store.rename_person`, `preferences.rename_submissions`); `email_log` and saved
+  result JSONs are left as historical records. `users.name_custom=1` stops SSO
+  logins overwriting the chosen name; `users.sso_name` holds the provider name.

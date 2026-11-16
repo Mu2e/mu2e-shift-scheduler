@@ -25,6 +25,7 @@ def _person_payload(row: dict, contact_cache: dict) -> dict | None:
         "email": str(row.get("email", "") or "").strip() or contact.get("email", ""),
         "phone": str(row.get("phone", "") or "").strip() or contact.get("phone", ""),
         "institution": str(row.get("institution", "") or "").strip() or contact.get("institution", ""),
+        **{k: contact.get(k, "") for k in store.CONTACT_EXTRA_FIELDS},
     }
 
 

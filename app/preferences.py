@@ -168,6 +168,26 @@ def _record_submission(name: str, preferences: list[str], overwrite: bool) -> No
         _write_schedule_prefs_csv(schedule)
 
 
+def rename_submissions(old: str, new: str) -> int:
+    """Rename a person's preference submissions (case-insensitive match on
+    *old*) and refresh the active schedule's prefs CSV. Returns the count."""
+    old_key, new = (old or "").strip().lower(), (new or "").strip()
+    if not old_key or not new:
+        return 0
+    submissions = _load_submissions()
+    changed = 0
+    for sub in submissions:
+        if str(sub.get("name", "")).strip().lower() == old_key and sub["name"] != new:
+            sub["name"] = new
+            changed += 1
+    if changed:
+        _write_submissions(submissions)
+        schedule = _current_preferences_schedule()
+        if schedule:
+            _write_schedule_prefs_csv(schedule)
+    return changed
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------

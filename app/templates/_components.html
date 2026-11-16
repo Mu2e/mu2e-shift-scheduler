@@ -20,11 +20,17 @@
 {%- if person.email -%}
 <a href="mailto:{{ person.email }}" class="person-link" data-contact
    data-name="{{ person.name }}" data-email="{{ person.email }}"
-   data-institution="{{ person.institution }}" data-phone="{{ person.phone }}">{{ person.name }}</a>
+   data-institution="{{ person.institution }}" data-phone="{{ person.phone }}"
+   data-mobile="{{ person.mobile_phone }}" data-chat="{{ person.chat_handle }}"
+   data-timezone="{{ person.timezone }}" data-alt-name="{{ person.alt_contact_name }}"
+   data-alt-phone="{{ person.alt_contact_phone }}">{{ person.name }}</a>
 {%- else -%}
 <a href="#" class="person-link" data-contact
    data-name="{{ person.name }}" data-email=""
-   data-institution="{{ person.institution }}" data-phone="{{ person.phone }}">{{ person.name }}</a>
+   data-institution="{{ person.institution }}" data-phone="{{ person.phone }}"
+   data-mobile="{{ person.mobile_phone }}" data-chat="{{ person.chat_handle }}"
+   data-timezone="{{ person.timezone }}" data-alt-name="{{ person.alt_contact_name }}"
+   data-alt-phone="{{ person.alt_contact_phone }}">{{ person.name }}</a>
 {%- endif -%}
 {% endmacro %}
 
