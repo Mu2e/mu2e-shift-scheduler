@@ -130,6 +130,29 @@ CREATE TABLE IF NOT EXISTS api_tokens (
     last_used_at TEXT,
     revoked_at   TEXT
 );
+CREATE TABLE IF NOT EXISTS collab_members (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    collab_id               INTEGER NOT NULL UNIQUE,
+    member_number           TEXT NOT NULL DEFAULT '',
+    display_name            TEXT NOT NULL DEFAULT '',
+    name                    TEXT NOT NULL DEFAULT '',
+    match_key               TEXT NOT NULL DEFAULT '',
+    email                   TEXT NOT NULL DEFAULT '',
+    contact_email           TEXT NOT NULL DEFAULT '',
+    fnal_username           TEXT NOT NULL DEFAULT '',
+    orcid                   TEXT NOT NULL DEFAULT '',
+    institution             TEXT NOT NULL DEFAULT '',
+    collaboration_position  TEXT NOT NULL DEFAULT '',
+    office_phone            TEXT NOT NULL DEFAULT '',
+    mobile_phone            TEXT NOT NULL DEFAULT '',
+    is_active               INTEGER NOT NULL DEFAULT 1,
+    is_collaboration_member INTEGER NOT NULL DEFAULT 0,
+    collab_updated_at       TEXT NOT NULL DEFAULT '',
+    synced_at               TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_collab_match ON collab_members(match_key);
+CREATE INDEX IF NOT EXISTS idx_collab_contact_email ON collab_members(contact_email);
+
 CREATE TABLE IF NOT EXISTS email_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     sent_at     TEXT NOT NULL,
@@ -673,6 +696,14 @@ def list_people_names() -> list[str]:
     with auth.connect() as conn:
         for row in conn.execute("SELECT name FROM users WHERE name != ''"):
             names.setdefault(row["name"].strip().lower(), row["name"].strip())
+    # Collaboration members the scheduler does not already know under some
+    # spelling (matched on first+last name, ignoring middle names/initials).
+    known_keys = {person_match_key(n) for n in names.values()}
+    for member in list_collab_members(assignable_only=True):
+        key = member["match_key"]
+        if member["name"] and key and key not in known_keys:
+            known_keys.add(key)
+            names.setdefault(member["name"].lower(), member["name"])
     return sorted(names.values(), key=str.lower)
 
 
@@ -787,7 +818,7 @@ def upcoming_assignments(days_ahead: int) -> list[dict]:
 
 def resolve_reminder_email(person: str) -> str:
     """Email for a reminder: the registered user account's address first,
-    then the contacts table."""
+    then the contacts table, then the collaboration directory."""
     person = (person or "").strip()
     if not person:
         return ""
@@ -803,7 +834,10 @@ def resolve_reminder_email(person: str) -> str:
             return contact_email or user["email"]
     with connect() as conn:
         row = conn.execute("SELECT email FROM contacts WHERE name = ?", (person,)).fetchone()
-    return (row["email"] if row else "") or ""
+    if row and row["email"]:
+        return row["email"]
+    member = find_collab_member(person)
+    return (member["contact_email"] or member["email"]) if member else ""
 
 
 def log_email(recipient: str, person: str, subject: str, schedule_id: int | None,
@@ -947,6 +981,31 @@ def bulk_upsert_contacts(rows: list[dict]) -> None:
 
 
 def get_contact(name: str) -> dict | None:
+    """Contact for a person: contacts, then user accounts, with blank fields
+    filled from the synced collaboration directory (lowest precedence)."""
+    contact = _get_contact_local(name)
+    member = None
+    if (name or "").strip() and (name or "").strip().upper() != "UNASSIGNED":
+        member = find_collab_member(name, emails=[contact["email"]] if contact else [])
+    if not member:
+        return contact
+    if contact is None:
+        contact = {"name": name.strip(), "email": "", "phone": "", "institution": "",
+                   **{k: "" for k in CONTACT_EXTRA_FIELDS}, "source": "collaboration"}
+    fills = {
+        "email": member["contact_email"] or member["email"],
+        "phone": member["office_phone"] or member["mobile_phone"],
+        "institution": member["institution"],
+        "mobile_phone": member["mobile_phone"] if member["office_phone"] else "",
+    }
+    for key, value in fills.items():
+        if not contact.get(key) and value:
+            contact[key] = value
+    contact["collab_member_number"] = member["member_number"]
+    return contact
+
+
+def _get_contact_local(name: str) -> dict | None:
     """Contact for a person: contacts table first, then the auth users table."""
     name = (name or "").strip()
     if not name or name.upper() == "UNASSIGNED":
@@ -1203,3 +1262,195 @@ def on_duty(at) -> list[dict]:
     for h in hits:
         h.pop("classification_order", None)
     return hits
+
+
+# ---------------------------------------------------------------------------
+# Collaboration directory (synced from mu2e-collaboration.fnal.gov, read-only)
+# ---------------------------------------------------------------------------
+
+SETTING_COLLAB_SINCE = "collab_sync_updated_since"
+SETTING_COLLAB_STATUS = "collab_sync_status"
+SETTING_COLLAB_LEASE = "collab_sync_lease"
+
+_COLLAB_COLUMNS = (
+    "member_number", "display_name", "name", "match_key", "email", "contact_email",
+    "fnal_username", "orcid", "institution", "collaboration_position",
+    "office_phone", "mobile_phone", "is_active", "is_collaboration_member",
+    "collab_updated_at",
+)
+
+
+def collab_display_to_name(display_name: str) -> str:
+    """'Last, First Middle' -> 'First Middle Last'; other forms unchanged."""
+    display_name = " ".join((display_name or "").split())
+    if "," in display_name:
+        last, _, first = display_name.partition(",")
+        if first.strip() and last.strip():
+            return f"{first.strip()} {last.strip()}"
+    return display_name
+
+
+def person_match_key(name: str) -> str:
+    """Normalized 'first last' key: handles 'Last, First', drops middle names
+    and initials, punctuation and case. '' when fewer than two name parts."""
+    name = collab_display_to_name(name)
+    parts = ["".join(ch for ch in w if ch.isalnum()).lower() for w in name.split()]
+    parts = [w for w in parts if w]
+    if len(parts) < 2:
+        return parts[0] if parts else ""
+    return f"{parts[0]} {parts[-1]}"
+
+
+def upsert_collab_members(records: list[dict]) -> int:
+    """Insert or update directory records (already normalized by app.collab)."""
+    if not records:
+        return 0
+    now = _utcnow()
+    cols = ", ".join(_COLLAB_COLUMNS)
+    marks = ", ".join("?" for _ in _COLLAB_COLUMNS)
+    sets = ", ".join(f"{c} = excluded.{c}" for c in _COLLAB_COLUMNS)
+    with connect() as conn:
+        for rec in records:
+            conn.execute(
+                f"""
+                INSERT INTO collab_members (collab_id, {cols}, synced_at)
+                VALUES (?, {marks}, ?)
+                ON CONFLICT(collab_id) DO UPDATE SET {sets}, synced_at = excluded.synced_at
+                """,
+                (rec["collab_id"], *[rec.get(c, "") for c in _COLLAB_COLUMNS], now),
+            )
+    return len(records)
+
+
+def list_collab_members(*, assignable_only: bool = False, q: str = "") -> list[dict]:
+    """Directory rows; assignable_only = active (and members, per settings)."""
+    where, params = [], []
+    if assignable_only:
+        where.append("is_active = 1")
+        from flask import current_app
+        if current_app.config.get("COLLAB", {}).get("members_only", True):
+            where.append("is_collaboration_member = 1")
+    if q:
+        like = f"%{q.strip().lower()}%"
+        where.append("(lower(display_name) LIKE ? OR lower(name) LIKE ? OR lower(institution) LIKE ?"
+                     " OR lower(contact_email) LIKE ? OR member_number LIKE ?)")
+        params += [like, like, like, like, like]
+    sql = "SELECT * FROM collab_members"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY display_name COLLATE NOCASE"
+    with connect() as conn:
+        return [dict(r) for r in conn.execute(sql, params)]
+
+
+def collab_member_counts() -> dict:
+    with connect() as conn:
+        row = conn.execute(
+            """SELECT count(*) AS total,
+                      coalesce(sum(is_active), 0) AS active,
+                      coalesce(sum(is_active AND is_collaboration_member), 0) AS members
+                 FROM collab_members"""
+        ).fetchone()
+    return dict(row)
+
+
+def find_collab_member(name: str = "", emails: list[str] | None = None,
+                       fnal_username: str = "") -> dict | None:
+    """Match a scheduler person to a directory record.
+
+    Order: email (contact or login), FNAL username, then normalized
+    first+last name. Active records win over inactive ones; a name key that
+    matches more than one active record is treated as ambiguous (no match).
+    """
+    emails = [e.strip().lower() for e in (emails or []) if e and e.strip()]
+    with connect() as conn:
+        for email in emails:
+            row = conn.execute(
+                """SELECT * FROM collab_members
+                    WHERE lower(contact_email) = ? OR lower(email) = ?
+                    ORDER BY is_active DESC LIMIT 1""",
+                (email, email),
+            ).fetchone()
+            if row:
+                return dict(row)
+            if email.endswith("@fnal.gov") and not fnal_username:
+                fnal_username = email.split("@", 1)[0]
+        if fnal_username:
+            row = conn.execute(
+                "SELECT * FROM collab_members WHERE lower(fnal_username) = ? ORDER BY is_active DESC LIMIT 1",
+                (fnal_username.strip().lower(),),
+            ).fetchone()
+            if row:
+                return dict(row)
+        key = person_match_key(name)
+        if not key or " " not in key:
+            return None
+        rows = conn.execute(
+            "SELECT * FROM collab_members WHERE match_key = ? ORDER BY is_active DESC", (key,)
+        ).fetchall()
+    active = [r for r in rows if r["is_active"]]
+    candidates = active or rows
+    return dict(candidates[0]) if len(candidates) == 1 else None
+
+
+def get_collab_status() -> dict:
+    import json as _json
+    raw = get_setting(SETTING_COLLAB_STATUS, "")
+    try:
+        return _json.loads(raw) if raw else {}
+    except ValueError:
+        return {}
+
+
+def set_collab_status(status: dict) -> None:
+    import json as _json
+    set_setting(SETTING_COLLAB_STATUS, _json.dumps(status, sort_keys=True))
+
+
+def acquire_collab_lease(owner: str, ttl_seconds: int, min_interval_seconds: int = 0) -> bool:
+    """Take the single-writer sync lease (one gunicorn worker at a time).
+
+    Fails while another unexpired lease exists, or when min_interval_seconds
+    is set and the last successful sync finished more recently than that.
+    """
+    from datetime import datetime, timedelta, timezone as _tz
+    now = datetime.now(_tz.utc)
+    with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (SETTING_COLLAB_LEASE,)).fetchone()
+        if row and row["value"]:
+            holder, _, expires = row["value"].partition("|")
+            try:
+                if datetime.fromisoformat(expires) > now and holder != owner:
+                    conn.execute("ROLLBACK")
+                    return False
+            except ValueError:
+                pass
+        if min_interval_seconds:
+            status_row = conn.execute(
+                "SELECT value FROM settings WHERE key = ?", (SETTING_COLLAB_STATUS,)
+            ).fetchone()
+            import json as _json
+            try:
+                finished = _json.loads(status_row["value"]).get("finished_at") if status_row else None
+                ok = _json.loads(status_row["value"]).get("ok") if status_row else False
+            except ValueError:
+                finished, ok = None, False
+            if ok and finished and datetime.fromisoformat(finished) > now - timedelta(seconds=min_interval_seconds):
+                conn.execute("ROLLBACK")
+                return False
+        value = f"{owner}|{(now + timedelta(seconds=ttl_seconds)).isoformat()}"
+        conn.execute(
+            """INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+            (SETTING_COLLAB_LEASE, value, now.isoformat()),
+        )
+        conn.execute("COMMIT")
+    return True
+
+
+def release_collab_lease(owner: str) -> None:
+    with connect() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (SETTING_COLLAB_LEASE,)).fetchone()
+        if row and row["value"].partition("|")[0] == owner:
+            conn.execute("DELETE FROM settings WHERE key = ?", (SETTING_COLLAB_LEASE,))

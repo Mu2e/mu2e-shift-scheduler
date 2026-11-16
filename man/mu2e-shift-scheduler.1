@@ -1,4 +1,4 @@
-.TH MU2E-SHIFT-SCHEDULER 1 "2026-08-31" "Mu2e Shift Scheduler v1.0.0" "Mu2e Shift Scheduler"
+.TH MU2E-SHIFT-SCHEDULER 1 "2026-11-16" "Mu2e Shift Scheduler v1.0.0" "Mu2e Shift Scheduler"
 .SH NAME
 mu2e-shift-scheduler \- command-line interface to the Mu2e shift scheduler
 .SH SYNOPSIS
@@ -11,6 +11,13 @@ mu2e-shift-scheduler \- command-line interface to the Mu2e shift scheduler
 .B mu2e-shift-scheduler
 .I serve
 [\fB\-\-host\fR \fIHOST\fR] [\fB\-\-port\fR \fIPORT\fR]
+.br
+.B mu2e-shift-scheduler
+.I collab-sync
+[\fB\-\-full\fR] [\fB\-\-dry\-run\fR] [\fB\-\-status\fR] [\fB\-\-json\fR]
+[\fB\-\-base\-url\fR \fIURL\fR] [\fB\-\-token\-file\fR \fIPATH\fR]
+[\fB\-\-timeout\fR \fISEC\fR] [\fB\-\-phones\fR|\fB\-\-no\-phones\fR]
+[\fB\-\-members\-only\fR|\fB\-\-all\-accounts\fR]
 .SH DESCRIPTION
 Console entry point installed by the package (\fIpyproject.toml\fR); it is
 equivalent to running
@@ -20,9 +27,74 @@ The
 subcommand runs the two-pass ILP solver over a shifts CSV and a people CSV and
 writes assignments; the
 .I serve
-subcommand starts the web interface. Run each subcommand with
+subcommand starts the web interface; the
+.I collab-sync
+subcommand copies the Mu2e Collaboration member directory into the
+application database. Run each subcommand with
 .B \-\-help
 for the full option list.
+.SH COLLAB-SYNC
+Reads
+.I /api/v1/users/
+from the collaboration site with a bearer token (GET only) and upserts every
+record into the
+.B collab_members
+table of
+.BR APP_DB_PATH .
+Without
+.B \-\-full
+only records changed since the last successful run are fetched
+.RB ( updated_since );
+the run's start time becomes the next
+.B updated_since
+only when the whole run succeeds. Records with a
+.B schema_version
+newer than 1 abort the run without writing. With phone lookups enabled and an
+admin-owned token, each fetched record is also read with
+.B ?detail=full
+for office and mobile phones. The run takes the same single-writer lease as
+the web application's periodic sync and exits 3 when another sync holds it.
+.TP
+.B \-\-full
+Ignore
+.B updated_since
+and fetch every record.
+.TP
+.B \-\-dry\-run
+Fetch and validate, write nothing.
+.TP
+.B \-\-status
+Print the effective configuration (token redacted), last sync status and
+record counts as JSON; no fetch.
+.TP
+.BI \-\-token\-file " PATH"
+File holding the token; overrides
+.BR MU2E_COLLAB_TOKEN .
+.PP
+Configuration precedence: command line > environment (and
+.I .env
+via the start script) > the
+.B collaboration:
+section of
+.I config/config.yaml
+> defaults. Environment variables:
+.BR MU2E_COLLAB_URL ,
+.BR MU2E_COLLAB_TOKEN ,
+.BR MU2E_COLLAB_TOKEN_FILE ,
+.B MU2E_COLLAB_SYNC_HOURS
+(periodic in-app sync, 0 disables),
+.BR MU2E_COLLAB_FETCH_PHONES ,
+.BR MU2E_COLLAB_MEMBERS_ONLY ,
+.BR MU2E_COLLAB_TIMEOUT .
+.PP
+Exit status: 0 success, 1 sync failed (message on stderr), 2 no token,
+3 lease held by another sync.
+.SH EXAMPLES
+.nf
+mu2e-shift-scheduler collab-sync \-\-token\-file mu2e-collaboration-api-access-token \-\-full
+mu2e-shift-scheduler collab-sync \-\-status
+MU2E_COLLAB_TOKEN_FILE=/run/secrets/collab mu2e-shift-scheduler collab-sync \-\-json
+.fi
 .SH SEE ALSO
 .BR start-mu2e-shift-scheduler (1),
 .BR create-shift-blocks (1)

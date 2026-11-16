@@ -33,6 +33,12 @@ def app(tmp_path, monkeypatch):
     monkeypatch.delenv("OIDC_PROVIDER_URL", raising=False)
     monkeypatch.delenv("OIDC_CLIENT_ID", raising=False)
     monkeypatch.delenv("OIDC_CLIENT_SECRET", raising=False)
+    # Collaboration sync: never pick up a developer token, never start the
+    # background thread, never touch the network (tests mock urlopen).
+    for var in ("MU2E_COLLAB_TOKEN", "MU2E_COLLAB_TOKEN_FILE", "MU2E_COLLAB_URL",
+                "MU2E_COLLAB_FETCH_PHONES", "MU2E_COLLAB_MEMBERS_ONLY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("MU2E_COLLAB_SYNC_HOURS", "0")
 
     from app import create_app
 

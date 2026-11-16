@@ -272,6 +272,36 @@ The old `_shifts_per_person` key names are still accepted as fallbacks.
     shifts were not filled by a preferred person in pass 1).
 - Download results as CSV or JSON.
 
+### Collaboration directory (`/admin/collaboration`)
+
+The member directory is synced read-only from the Mu2e Collaboration database
+(https://mu2e-collaboration.fnal.gov, REST API v1) into `app.sqlite`
+(`collab_members`). Active collaboration members appear in shift-assignment
+name suggestions, and their email, phone and institution fill blank fields in
+calendar contact popovers, reminders and the user's profile page. Precedence:
+the user's own profile > existing contacts > the collaboration directory.
+People are matched by email, then FNAL username, then first+last name
+(directory names are `Last, First Middle`; ambiguous names are not matched).
+
+Configure a token (never commit it):
+
+```bash
+# .env (loaded by scripts/start-mu2e-shift-scheduler)
+MU2E_COLLAB_TOKEN_FILE=mu2e-collaboration-api-access-token
+```
+
+The app then syncs every `MU2E_COLLAB_SYNC_HOURS` (default 6; a SQLite lease
+lets only one gunicorn worker run it). Run or inspect a sync by hand:
+
+```bash
+venv/bin/mu2e-shift-scheduler collab-sync --token-file mu2e-collaboration-api-access-token --full
+venv/bin/mu2e-shift-scheduler collab-sync --status
+```
+
+On OKD, set `collaboration.token` in the private `my-values.yaml` (rendered
+into the release Secret as `MU2E_COLLAB_TOKEN`). Use a **read-only** token
+owned by a collaboration admin; the admin owner is what allows phone lookups.
+
 ---
 
 ## Sample Datasets

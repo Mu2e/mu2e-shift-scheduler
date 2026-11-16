@@ -82,6 +82,7 @@
           <li><a href="https://gunicorn.org/" target="_blank">gunicorn</a> (production WSGI server)</li>
           <li><a href="https://getbootstrap.com/" target="_blank">Bootstrap 5.3</a> (styling, via CDN)</li>
           <li>SQLite (Python stdlib) for schedules, taxonomy, settings, contacts, and user accounts</li>
+          <li><a href="https://mu2e-collaboration.fnal.gov/" target="_blank">Mu2e Collaboration database</a> REST API v1 (read-only member directory sync; Python stdlib HTTP client)</li>
         </ul>
       </div>
     </div>
@@ -106,6 +107,7 @@
               <tr><td><code>GET|POST /configuration</code>, <code>GET /admin/users</code></td><td>Admin: file manager / taxonomy / defaults, and user roles.</td></tr>
               <tr><td><code>GET /preferences/*</code></td><td>Shift preference submission and review.</td></tr>
               <tr><td><code>GET|POST /profile</code></td><td>Self-service profile: display name (renames stored assignments and preferences), contact email, phones, institution, chat handle, timezone, alternate contact.</td></tr>
+              <tr><td><code>GET /admin/collaboration</code>, <code>POST /admin/collaboration/sync</code></td><td>Admin: collaboration directory status, member table (<code>q</code>, <code>scope=assignable|all</code>), and sync now / full resync (<code>full=1</code>).</td></tr>
               <tr><td><code>POST /admin/preview</code>, <code>POST /preview/exit</code></td><td>Admin: view the site as a lower role (<code>role</code> form field) for the current login session; exit restores admin rights. The stored role is unchanged.</td></tr>
             </tbody>
           </table>

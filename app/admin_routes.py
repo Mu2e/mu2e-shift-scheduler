@@ -518,3 +518,48 @@ def api_tokens_revoke(token_id: int):
     else:
         flash("Token not found or already revoked.", "warning")
     return redirect(url_for("admin.api_tokens"))
+
+
+# ---------------------------------------------------------------------------
+# Collaboration directory (mu2e-collaboration.fnal.gov sync)
+# ---------------------------------------------------------------------------
+
+@bp.route("/collaboration")
+@admin_required
+def collaboration():
+    from app import collab
+
+    q = request.args.get("q", "").strip()
+    scope = request.args.get("scope", "assignable")
+    members = store.list_collab_members(assignable_only=(scope == "assignable"), q=q)
+    return render_template(
+        "admin_collaboration.html",
+        nav_active="admin",
+        cfg=collab.public_config(current_app.config["COLLAB"]),
+        status=store.get_collab_status(),
+        counts=store.collab_member_counts(),
+        since=store.get_setting(store.SETTING_COLLAB_SINCE),
+        members=members,
+        q=q,
+        scope=scope,
+    )
+
+
+@bp.route("/collaboration/sync", methods=["POST"])
+@admin_required
+def collaboration_sync():
+    from app import collab
+
+    if not current_app.config["COLLAB"]["enabled"]:
+        flash("No collaboration API token is configured (MU2E_COLLAB_TOKEN or MU2E_COLLAB_TOKEN_FILE).", "danger")
+        return redirect(url_for("admin.collaboration"))
+    full = request.form.get("full") == "1"
+    status = collab.sync_with_lease(current_app._get_current_object(), full=full)
+    if status is None:
+        flash("A collaboration sync is already running; try again shortly.", "warning")
+    elif status["ok"]:
+        flash(f"Collaboration sync complete: {status['fetched']} record(s) updated"
+              f"{' (full resync)' if full else ''} in {status['duration_s']} s.", "success")
+    else:
+        flash(f"Collaboration sync failed: {status.get('error')}", "danger")
+    return redirect(url_for("admin.collaboration"))

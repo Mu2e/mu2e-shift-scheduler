@@ -66,6 +66,15 @@ def _validate_profile(form: dict) -> list[str]:
     return errors
 
 
+def _collab_member_for(user):
+    """The user's collaboration directory record, if one matches."""
+    from app import store
+
+    return store.find_collab_member(
+        user.name, emails=[user.email, getattr(user, "contact_email", "")]
+    )
+
+
 def _rename_self(user, new_name: str) -> str | None:
     """Change the user's display name and rename their stored records.
 
@@ -189,7 +198,8 @@ def profile():
             for message in errors:
                 flash(message, "danger")
             return render_template("profile.html", nav_active="profile", form=form,
-                                   timezones=timezone_names()), 400
+                                   timezones=timezone_names(),
+                                   collab_member=_collab_member_for(current_user)), 400
         form.pop("display_name", None)
         updated = update_user_profile(current_user.get_id(), form)
         if updated:
@@ -199,7 +209,7 @@ def profile():
             flash("Could not update your profile.", "danger")
         return redirect(url_for("auth.profile"))
     return render_template("profile.html", nav_active="profile", form=None,
-                           timezones=timezone_names())
+                           timezones=timezone_names(), collab_member=_collab_member_for(current_user))
 
 
 def _safe_next(default_endpoint: str) -> str:

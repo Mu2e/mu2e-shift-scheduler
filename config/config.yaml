@@ -46,3 +46,14 @@ web:
   host: "127.0.0.1"
   port: 8001
   debug: false
+
+# Mu2e Collaboration directory sync (https://mu2e-collaboration.fnal.gov).
+# Enabled when a bearer token is available. Never put the token itself here:
+# use MU2E_COLLAB_TOKEN / MU2E_COLLAB_TOKEN_FILE (env or .env) or the CLI's
+# --token-file. Precedence: command line > environment > .env > this file.
+collaboration:
+  base_url: "https://mu2e-collaboration.fnal.gov"
+  sync_hours: 6          # periodic in-app sync; 0 disables (Admin > Collaboration Directory still works)
+  fetch_phones: true     # per-record ?detail=full lookups; needs an admin-owned token
+  members_only: true     # only active collaboration members are assignable
+  timeout: 30            # seconds per HTTP request

@@ -32,6 +32,25 @@
       </div>
     </div>
 
+    {% if collab_member %}
+    <div class="card mb-3" id="collab-record">
+      <div class="card-header">Mu2e Collaboration record <span class="text-muted small">(read-only)</span></div>
+      <div class="card-body">
+        <dl class="row mb-0 small">
+          <dt class="col-sm-3">Name</dt><dd class="col-sm-9">{{ collab_member.display_name }}</dd>
+          {% if collab_member.member_number %}<dt class="col-sm-3">Member #</dt><dd class="col-sm-9">{{ collab_member.member_number }}</dd>{% endif %}
+          <dt class="col-sm-3">Institution</dt><dd class="col-sm-9">{{ collab_member.institution or "—" }}</dd>
+          <dt class="col-sm-3">Email</dt><dd class="col-sm-9">{{ collab_member.contact_email or collab_member.email or "—" }}</dd>
+          <dt class="col-sm-3">Phones</dt><dd class="col-sm-9">{{ collab_member.office_phone or "—" }}{% if collab_member.mobile_phone %} / {{ collab_member.mobile_phone }} (mobile){% endif %}</dd>
+        </dl>
+        <div class="form-text mt-2">
+          Fields you leave blank below fall back to this record. To change it, edit your
+          profile on the <a href="https://mu2e-collaboration.fnal.gov/" target="_blank" rel="noopener">collaboration site</a>.
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <form method="post" action="{{ url_for('auth.profile') }}">
       <div class="card mb-3">
         <div class="card-header">Name</div>

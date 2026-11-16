@@ -117,3 +117,14 @@ covered; page-render smoke tests catch template `url_for` breakage.
   previewed role while `real_role` keeps the stored one. `POST /preview/exit`
   (no admin check) clears it; login/logout signals also clear it. Roles are
   `auth.ROLES`; add new roles there and in `ROLE_LABELS`.
+- Collaboration directory: `app/collab.py` (stdlib HTTP client + sync; config
+  via `resolve_config`, stored in `app.config["COLLAB"]`) reads
+  mu2e-collaboration.fnal.gov `/api/v1/users/` (GET only, `schema_version` 1,
+  incremental `updated_since`, phones from `?detail=full` with an admin-owned
+  token) into `collab_members` (SQL in `store.py`). It is the lowest-precedence
+  contact source: `get_contact` fills blanks, `list_people_names` adds
+  unmatched assignable members, `resolve_reminder_email` falls back to it.
+  Matching: email > FNAL username > `person_match_key` (first+last, ambiguous =
+  no match). Periodic daemon-thread sync uses a SQLite lease
+  (`acquire_collab_lease`) so one gunicorn worker syncs. CLI: `collab-sync`.
+  Token file `mu2e-collaboration-api-access-token` is gitignored; never log it.
