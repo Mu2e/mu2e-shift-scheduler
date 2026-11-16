@@ -77,6 +77,16 @@ oidc:
   clientId: ""
   clientSecret: ""
 
+collaboration:
+  # Mu2e Collaboration directory sync. Sync is enabled only when token is set.
+  # Put the token in a private values file (my-values.yaml), never here; a
+  # read-only token owned by a collaboration admin also allows phone lookups.
+  token: ""
+  baseUrl: https://mu2e-collaboration.fnal.gov
+  syncHours: "6"
+  fetchPhones: "1"
+  membersOnly: "1"
+
 gunicorn:
   workers: 3
   timeout: 1800

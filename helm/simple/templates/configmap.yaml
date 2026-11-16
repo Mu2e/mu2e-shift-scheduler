@@ -26,6 +26,10 @@ data:
   MU2E_INITIAL_ADMIN_EMAIL: {{ .Values.auth.initialAdminEmail | quote }}
   OIDC_PROVIDER_URL: {{ .Values.oidc.providerUrl | quote }}
   OIDC_CLIENT_ID: {{ .Values.oidc.clientId | quote }}
+  MU2E_COLLAB_URL: {{ .Values.collaboration.baseUrl | quote }}
+  MU2E_COLLAB_SYNC_HOURS: {{ .Values.collaboration.syncHours | quote }}
+  MU2E_COLLAB_FETCH_PHONES: {{ .Values.collaboration.fetchPhones | quote }}
+  MU2E_COLLAB_MEMBERS_ONLY: {{ .Values.collaboration.membersOnly | quote }}
   GUNICORN_WORKERS: {{ .Values.gunicorn.workers | quote }}
   GUNICORN_TIMEOUT: {{ .Values.gunicorn.timeout | quote }}
   GUNICORN_LOG_LEVEL: {{ .Values.gunicorn.logLevel | quote }}

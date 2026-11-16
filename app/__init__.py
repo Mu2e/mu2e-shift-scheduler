@@ -92,4 +92,11 @@ def create_app(
     from .store import init_app_db
     init_app_db(app)
 
+    # Collaboration directory sync (enabled when a token is configured).
+    from . import collab
+    app.config["COLLAB"] = collab.resolve_config(
+        collab.load_yaml_section(app.config["SCHEDULER_CONFIG"])
+    )
+    collab.start_background_sync(app)
+
     return app

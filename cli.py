@@ -135,6 +135,63 @@ def cmd_serve(args: argparse.Namespace) -> None:
     app.run(host=args.host, port=args.port, debug=args.debug)
 
 
+def cmd_collab_sync(args: argparse.Namespace) -> int:
+    """Sync (or inspect) the Mu2e Collaboration directory copy in app.sqlite."""
+    import json
+    import os
+
+    # The CLI runs one sync; never start the periodic thread here.
+    os.environ["MU2E_COLLAB_SYNC_HOURS"] = "0"
+    from app import collab, create_app, store
+
+    app = create_app(config_path=args.config)
+    overrides = {
+        "base_url": args.base_url,
+        "token_file": args.token_file,
+        "fetch_phones": args.fetch_phones,
+        "members_only": args.members_only,
+        "timeout": args.timeout,
+    }
+    if args.token_file:
+        overrides["token"] = ""  # --token-file beats a token from the environment
+        os.environ.pop("MU2E_COLLAB_TOKEN", None)
+    app.config["COLLAB"] = collab.resolve_config(
+        collab.load_yaml_section(args.config), overrides=overrides
+    )
+    cfg = app.config["COLLAB"]
+
+    with app.app_context():
+        if args.status:
+            out = {"config": collab.public_config(cfg), "status": store.get_collab_status(),
+                   "counts": store.collab_member_counts(),
+                   "updated_since": store.get_setting(store.SETTING_COLLAB_SINCE)}
+            print(json.dumps(out, indent=2, default=str))
+            return 0
+    if not cfg["enabled"]:
+        print("Error: no collaboration API token (use --token-file, MU2E_COLLAB_TOKEN or "
+              "MU2E_COLLAB_TOKEN_FILE).", file=sys.stderr)
+        return 2
+    if args.dry_run:
+        with app.app_context():
+            status = collab.sync(cfg, full=args.full, dry_run=True)
+    else:
+        status = collab.sync_with_lease(app, full=args.full)
+        if status is None:
+            print("Error: another collaboration sync holds the lease; try again later.", file=sys.stderr)
+            return 3
+    if args.json:
+        print(json.dumps(status, indent=2, default=str))
+    elif status["ok"]:
+        print(f"OK: {status['fetched']} record(s){' (dry run)' if args.dry_run else ''}, "
+              f"{status.get('phone_lookups', 0)} phone lookup(s), {status['duration_s']} s; "
+              f"token {status.get('token_owner')}/{status.get('token_mode')}")
+        if status.get("warning"):
+            print(f"Warning: {status['warning']}")
+    else:
+        print(f"Error: {status.get('error')}", file=sys.stderr)
+    return 0 if status["ok"] else 1
+
+
 # ---------------------------------------------------------------------------
 # Argument parser
 # ---------------------------------------------------------------------------
@@ -242,6 +299,33 @@ def build_parser() -> argparse.ArgumentParser:
              "(overrides SHOW_ADMIN_LOGIN; this is the default).",
     )
 
+    # ---- collab-sync ----
+    cs = subparsers.add_parser(
+        "collab-sync",
+        help="Sync the Mu2e Collaboration member directory into app.sqlite.",
+        description="Fetch the member directory from mu2e-collaboration.fnal.gov "
+                    "(incremental via updated_since unless --full) and store it in "
+                    "APP_DB_PATH. Options override MU2E_COLLAB_* environment variables, "
+                    "which override the config.yaml 'collaboration:' section.",
+    )
+    cs.add_argument("--full", action="store_true", help="Ignore updated_since and fetch every record.")
+    cs.add_argument("--dry-run", action="store_true", help="Fetch and validate but write nothing.")
+    cs.add_argument("--status", action="store_true", help="Print config (token redacted), last status and counts; no fetch.")
+    cs.add_argument("--json", action="store_true", help="Print the sync status as JSON.")
+    cs.add_argument("--base-url", metavar="URL", help="Collaboration site (default https://mu2e-collaboration.fnal.gov).")
+    cs.add_argument("--token-file", metavar="PATH", help="File holding the bearer token (overrides MU2E_COLLAB_TOKEN).")
+    cs.add_argument("--timeout", type=float, metavar="SEC", help="HTTP timeout per request (default 30).")
+    phones = cs.add_mutually_exclusive_group()
+    phones.add_argument("--phones", dest="fetch_phones", action="store_true", default=None,
+                        help="Fetch phone numbers via ?detail=full (admin-owned token).")
+    phones.add_argument("--no-phones", dest="fetch_phones", action="store_false",
+                        help="Skip per-record phone lookups.")
+    members = cs.add_mutually_exclusive_group()
+    members.add_argument("--members-only", dest="members_only", action="store_true", default=None,
+                         help="Only collaboration members are assignable (default).")
+    members.add_argument("--all-accounts", dest="members_only", action="store_false",
+                         help="Every active account is assignable.")
+
     return parser
 
 
@@ -253,6 +337,8 @@ def main() -> None:
             cmd_solve(args)
         elif args.command == "serve":
             cmd_serve(args)
+        elif args.command == "collab-sync":
+            sys.exit(cmd_collab_sync(args))
     except (ValueError, InfeasibleError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
