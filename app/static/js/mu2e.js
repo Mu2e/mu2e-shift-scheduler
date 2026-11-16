@@ -141,13 +141,37 @@
       mail.appendChild(mailLink);
       wrap.appendChild(mail);
     }
-    if (phone) {
+    function addPhone(number, label) {
+      if (!number) return;
       var tel = document.createElement("div");
+      if (label) tel.appendChild(document.createTextNode(label + ": "));
       var telLink = document.createElement("a");
-      telLink.href = "tel:" + phone.replace(/[^+0-9]/g, "");
-      telLink.textContent = phone;
+      telLink.href = "tel:" + number.replace(/[^+0-9]/g, "");
+      telLink.textContent = number;
       tel.appendChild(telLink);
       wrap.appendChild(tel);
+    }
+    function addText(text, className) {
+      var div = document.createElement("div");
+      if (className) div.className = className;
+      div.textContent = text;
+      wrap.appendChild(div);
+    }
+    addPhone(phone, el.dataset.mobile ? "Office" : "");
+    addPhone(el.dataset.mobile, "Mobile");
+    if (el.dataset.chat) addText("Chat: " + el.dataset.chat);
+    if (el.dataset.timezone) {
+      var local = "";
+      try {
+        local = new Date().toLocaleTimeString([], {
+          timeZone: el.dataset.timezone, hour: "2-digit", minute: "2-digit"
+        });
+      } catch (e) { /* unknown zone in this browser: show the name only */ }
+      addText((local ? "Local time " + local + " " : "") + "(" + el.dataset.timezone + ")", "text-muted small");
+    }
+    if (el.dataset.altName || el.dataset.altPhone) {
+      addText("Alternate: " + (el.dataset.altName || ""), "mt-1");
+      addPhone(el.dataset.altPhone, "");
     }
     if (!wrap.childNodes.length) {
       var none = document.createElement("div");

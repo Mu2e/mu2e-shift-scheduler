@@ -1,4 +1,6 @@
 """
+
+from __future__ import annotations
 SQLite persistence for named schedules, classifications (taxonomy), saved
 assignments, app settings, and shifter contact info.
 
@@ -12,6 +14,8 @@ connections enable WAL and a busy timeout. That is only safe with a single
 replica (the Helm chart deploys one pod with the Recreate strategy); running
 multiple replicas requires switching to Postgres.
 """
+
+from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -247,6 +251,11 @@ def init_app_db(app) -> None:
         conn.execute(
             "INSERT OR IGNORE INTO schema_meta (key, value) VALUES ('schema_version', '1')"
         )
+        # Migration: extended profile fields mirrored from user accounts.
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(contacts)")}
+        for column in CONTACT_EXTRA_FIELDS:
+            if column not in existing:
+                conn.execute(f"ALTER TABLE contacts ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
         now = _utcnow()
         for order, name in enumerate(DEFAULT_CLASSIFICATIONS):
             conn.execute(
@@ -786,10 +795,12 @@ def resolve_reminder_email(person: str) -> str:
 
     with auth.connect() as conn:
         user = conn.execute(
-            "SELECT email FROM users WHERE name = ? COLLATE NOCASE", (person,)
+            "SELECT * FROM users WHERE name = ? COLLATE NOCASE", (person,)
         ).fetchone()
-    if user and user["email"]:
-        return user["email"]
+    if user:
+        contact_email = user["contact_email"] if "contact_email" in user.keys() else ""
+        if contact_email or user["email"]:
+            return contact_email or user["email"]
     with connect() as conn:
         row = conn.execute("SELECT email FROM contacts WHERE name = ?", (person,)).fetchone()
     return (row["email"] if row else "") or ""
@@ -864,30 +875,47 @@ def set_preferences_schedule_id(schedule_id: int | None) -> None:
 # Contacts
 # ---------------------------------------------------------------------------
 
+# Profile-only contact columns (set from a user's own profile, never from CSVs).
+CONTACT_EXTRA_FIELDS = (
+    "mobile_phone",
+    "alt_contact_name",
+    "alt_contact_phone",
+    "chat_handle",
+    "timezone",
+)
+
+
 def upsert_contact(name: str, *, email: str = "", phone: str = "", institution: str = "",
-                   replace: bool = False) -> None:
+                   replace: bool = False, extra: dict | None = None) -> None:
     """Insert or update a contact.
 
     By default blank fields never erase stored values (CSV rows are often
     partial). With replace=True the fields are set verbatim — used when a
-    person edits their own profile, which is authoritative.
+    person edits their own profile, which is authoritative. *extra* carries
+    CONTACT_EXTRA_FIELDS and is only honored with replace=True.
     """
     name = (name or "").strip()
     if not name:
         return
     with connect() as conn:
         if replace:
+            extra = extra or {}
+            extras = [str(extra.get(k, "") or "").strip() for k in CONTACT_EXTRA_FIELDS]
+            cols = ", ".join(CONTACT_EXTRA_FIELDS)
+            marks = ", ".join("?" for _ in CONTACT_EXTRA_FIELDS)
+            sets = ",\n                    ".join(f"{k} = excluded.{k}" for k in CONTACT_EXTRA_FIELDS)
             conn.execute(
-                """
-                INSERT INTO contacts (name, email, phone, institution, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                f"""
+                INSERT INTO contacts (name, email, phone, institution, {cols}, updated_at)
+                VALUES (?, ?, ?, ?, {marks}, ?)
                 ON CONFLICT(name) DO UPDATE SET
                     email = excluded.email,
                     phone = excluded.phone,
                     institution = excluded.institution,
+                    {sets},
                     updated_at = excluded.updated_at
                 """,
-                (name, email.strip(), phone.strip(), institution.strip(), _utcnow()),
+                (name, email.strip(), phone.strip(), institution.strip(), *extras, _utcnow()),
             )
             return
         conn.execute(
@@ -931,6 +959,7 @@ def get_contact(name: str) -> dict | None:
             "email": row["email"],
             "phone": row["phone"],
             "institution": row["institution"],
+            **{k: row[k] or "" for k in CONTACT_EXTRA_FIELDS},
             "source": "contacts",
         }
 
@@ -939,21 +968,23 @@ def get_contact(name: str) -> dict | None:
 
     with auth.connect() as conn:
         user = conn.execute(
-            "SELECT name, email, phone, institution FROM users WHERE name = ? COLLATE NOCASE",
+            "SELECT * FROM users WHERE name = ? COLLATE NOCASE",
             (name,),
         ).fetchone()
         if user is None:
             local_part = name.lower().replace(" ", ".")
             user = conn.execute(
-                "SELECT name, email, phone, institution FROM users WHERE lower(email) = ? OR lower(email) LIKE ?",
+                "SELECT * FROM users WHERE lower(email) = ? OR lower(email) LIKE ?",
                 (name.lower(), f"{local_part}@%"),
             ).fetchone()
     if user:
+        keys = user.keys()
         return {
             "name": name,
-            "email": user["email"],
+            "email": (user["contact_email"] if "contact_email" in keys else "") or user["email"],
             "phone": user["phone"] or "",
             "institution": user["institution"] or (row["institution"] if row else ""),
+            **{k: (user[k] if k in keys else "") or "" for k in CONTACT_EXTRA_FIELDS},
             "source": "users",
         }
     if row and row["institution"]:
@@ -962,9 +993,46 @@ def get_contact(name: str) -> dict | None:
             "email": "",
             "phone": "",
             "institution": row["institution"],
+            **{k: "" for k in CONTACT_EXTRA_FIELDS},
             "source": "contacts",
         }
     return None
+
+
+def contact_name_conflict(name: str, own_emails: set[str]) -> bool:
+    """True when a contacts row named *name* carries an email that is not one
+    of *own_emails* — i.e. the name belongs to somebody else."""
+    with connect() as conn:
+        row = conn.execute("SELECT email FROM contacts WHERE name = ?", ((name or "").strip(),)).fetchone()
+    if not row or not row["email"]:
+        return False
+    return row["email"].strip().lower() not in {e.strip().lower() for e in own_emails if e}
+
+
+def rename_person(old: str, new: str) -> dict:
+    """Rename a person across stored app records in one transaction.
+
+    Rewrites assignments.person and the contacts row. If a contacts row for
+    *new* already exists (e.g. imported from a CSV under that spelling) the
+    old row is dropped and the caller's profile sync overwrites the new one.
+    email_log is an audit trail and is left unchanged. Returns row counts.
+    """
+    old, new = (old or "").strip(), (new or "").strip()
+    if not old or not new or old == new:
+        return {"assignments": 0, "contacts": 0}
+    with connect() as conn:
+        assignments = conn.execute(
+            "UPDATE assignments SET person = ? WHERE person = ? COLLATE NOCASE", (new, old)
+        ).rowcount
+        if old.lower() != new.lower() and conn.execute(
+            "SELECT 1 FROM contacts WHERE name = ?", (new,)
+        ).fetchone():
+            contacts = conn.execute("DELETE FROM contacts WHERE name = ?", (old,)).rowcount
+        else:
+            contacts = conn.execute(
+                "UPDATE contacts SET name = ?, updated_at = ? WHERE name = ?", (new, _utcnow(), old)
+            ).rowcount
+    return {"assignments": assignments, "contacts": contacts}
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,17 @@ login_manager.login_view = "auth.login"
 oauth = OAuth()
 
 
+# Self-service profile fields beyond phone/institution (all TEXT, default '').
+PROFILE_FIELDS = (
+    "contact_email",
+    "mobile_phone",
+    "alt_contact_name",
+    "alt_contact_phone",
+    "chat_handle",
+    "timezone",
+)
+
+
 class User(UserMixin):
     def __init__(self, row: sqlite3.Row):
         self.id = str(row["id"])
@@ -23,8 +34,14 @@ class User(UserMixin):
         self.role = row["role"] or "user"
         self.auth_provider = row["auth_provider"] or "local"
         keys = row.keys()
-        self.phone = (row["phone"] if "phone" in keys else "") or ""
-        self.institution = (row["institution"] if "institution" in keys else "") or ""
+        for field in ("phone", "institution", "sso_name") + PROFILE_FIELDS:
+            setattr(self, field, (row[field] if field in keys else "") or "")
+        self.name_custom = bool(row["name_custom"]) if "name_custom" in keys else False
+
+    @property
+    def contact_address(self) -> str:
+        """Email shown to other shifters and used for reminders."""
+        return self.contact_email or self.email
 
     @property
     def is_admin(self) -> bool:
@@ -70,9 +87,12 @@ def init_auth_db(app) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_users_oidc_sub ON users(oidc_sub)")
         # Migration: contact fields for existing databases.
         existing = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
-        for column in ("phone", "institution"):
+        for column in ("phone", "institution", "sso_name") + PROFILE_FIELDS:
             if column not in existing:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+        # name_custom=1: the user chose their display name; SSO logins keep it.
+        if "name_custom" not in existing:
+            conn.execute("ALTER TABLE users ADD COLUMN name_custom INTEGER NOT NULL DEFAULT 0")
 
 
 def seed_admin(app) -> None:
@@ -193,6 +213,49 @@ def update_user_contact(user_id: str, phone: str, institution: str) -> Optional[
     return User(row)
 
 
+def update_user_profile(user_id: str, fields: dict) -> Optional[User]:
+    """Set a user's own contact fields (phone, institution, PROFILE_FIELDS).
+
+    Only keys present in *fields* are written; values are stripped. The display
+    name is changed separately with set_display_name (it triggers a rename).
+    """
+    allowed = ("phone", "institution") + PROFILE_FIELDS
+    updates = {k: str(v or "").strip() for k, v in fields.items() if k in allowed}
+    with connect() as conn:
+        if not conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone():
+            return None
+        if updates:
+            assignments = ", ".join(f"{k} = ?" for k in updates)
+            conn.execute(
+                f"UPDATE users SET {assignments}, updated_at = ? WHERE id = ?",
+                (*updates.values(), _utcnow(), user_id),
+            )
+            conn.commit()
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    return User(row)
+
+
+def find_user_by_name(name: str, exclude_id: Optional[str] = None) -> Optional[sqlite3.Row]:
+    """Another account whose display name equals *name* (case-insensitive)."""
+    with connect() as conn:
+        return conn.execute(
+            "SELECT id, email, name FROM users WHERE name = ? COLLATE NOCASE AND id != ?",
+            ((name or "").strip(), exclude_id or -1),
+        ).fetchone()
+
+
+def set_display_name(user_id: str, name: str, custom: bool) -> Optional[User]:
+    """Store a display name. custom=False means it tracks the SSO name again."""
+    with connect() as conn:
+        conn.execute(
+            "UPDATE users SET name = ?, name_custom = ?, updated_at = ? WHERE id = ?",
+            (name.strip(), 1 if custom else 0, _utcnow(), user_id),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    return User(row) if row else None
+
+
 @login_manager.user_loader
 def load_user(user_id: str) -> Optional[User]:
     return get_user(user_id)
@@ -231,24 +294,27 @@ def upsert_oidc_user(claims: dict) -> User:
             (sub, email, sub),
         ).fetchone()
         if row:
+            # A user-chosen display name survives SSO logins; sso_name always
+            # tracks the provider so the user can revert to it.
+            keep_custom = "name_custom" in row.keys() and row["name_custom"]
             conn.execute(
                 """
                 UPDATE users
-                   SET email = ?, name = ?, auth_provider = 'oidc', oidc_sub = ?,
-                       updated_at = ?, last_login_at = ?
+                   SET email = ?, name = ?, sso_name = ?, auth_provider = 'oidc',
+                       oidc_sub = ?, updated_at = ?, last_login_at = ?
                  WHERE id = ?
                 """,
-                (email, name, sub, now, now, row["id"]),
+                (email, row["name"] if keep_custom else name, name, sub, now, now, row["id"]),
             )
             user_id = row["id"]
         else:
             cur = conn.execute(
                 """
                 INSERT INTO users
-                    (email, name, role, auth_provider, oidc_sub, created_at, updated_at, last_login_at)
-                VALUES (?, ?, 'user', 'oidc', ?, ?, ?, ?)
+                    (email, name, sso_name, role, auth_provider, oidc_sub, created_at, updated_at, last_login_at)
+                VALUES (?, ?, ?, 'user', 'oidc', ?, ?, ?, ?)
                 """,
-                (email, name, sub, now, now, now),
+                (email, name, name, sub, now, now, now),
             )
             user_id = cur.lastrowid
         conn.commit()

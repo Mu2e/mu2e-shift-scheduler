@@ -1,21 +1,23 @@
 {% extends "base.html" %}
 {% block title %}My Profile — Mu2e Shift Scheduler{% endblock %}
 
+{% macro val(field) -%}
+{{ form[field] if form and field in form else current_user[field] }}
+{%- endmacro %}
+
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-lg-6">
+  <div class="col-lg-8">
     <h2 class="mb-1">My Profile</h2>
     <p class="text-muted mb-4">
       Your contact information is shown when your name appears on a shift
-      calendar, so other shifters can reach you.
+      calendar, so other shifters and run coordinators can reach you.
     </p>
 
-    <div class="card">
+    <div class="card mb-3">
       <div class="card-body">
-        <dl class="row mb-4">
-          <dt class="col-sm-3">Name</dt>
-          <dd class="col-sm-9">{{ current_user.name }}</dd>
-          <dt class="col-sm-3">Email</dt>
+        <dl class="row mb-0">
+          <dt class="col-sm-3">Login email</dt>
           <dd class="col-sm-9"><code>{{ current_user.email }}</code></dd>
           <dt class="col-sm-3">Account</dt>
           <dd class="col-sm-9">
@@ -27,28 +29,95 @@
             {% if current_user.is_admin %}<span class="badge bg-warning text-dark ms-1">admin</span>{% endif %}
           </dd>
         </dl>
+      </div>
+    </div>
 
-        <form method="post" action="{{ url_for('auth.profile') }}" class="row g-3">
+    <form method="post" action="{{ url_for('auth.profile') }}">
+      <div class="card mb-3">
+        <div class="card-header">Name</div>
+        <div class="card-body row g-3">
+          <div class="col-12">
+            <label class="form-label" for="display_name">Display name</label>
+            <input class="form-control" type="text" id="display_name" name="display_name"
+                   maxlength="120" value="{{ form.display_name if form and 'display_name' in form else current_user.name }}"
+                   {% if not current_user.sso_name %}required{% endif %}>
+            <div class="form-text">
+              Shown on calendars and used to match your shift assignments and preferences.
+              Changing it renames your existing assignments and preference submissions.
+              {% if current_user.sso_name %}
+              Leave blank to use your Fermilab SSO name (<strong>{{ current_user.sso_name }}</strong>).
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header">Contact information</div>
+        <div class="card-body row g-3">
           <div class="col-md-6">
-            <label class="form-label" for="phone">Phone</label>
-            <input class="form-control" type="tel" id="phone" name="phone"
-                   value="{{ current_user.phone }}" placeholder="+1 630 840 0000">
+            <label class="form-label" for="contact_email">Contact email</label>
+            <input class="form-control" type="email" id="contact_email" name="contact_email"
+                   maxlength="254" value="{{ val('contact_email') }}" placeholder="{{ current_user.email }}">
+            <div class="form-text">Used for calendar contact links and reminder emails. Blank uses your login email.</div>
           </div>
           <div class="col-md-6">
             <label class="form-label" for="institution">Institution</label>
             <input class="form-control" type="text" id="institution" name="institution"
-                   value="{{ current_user.institution }}" placeholder="e.g. Fermilab">
+                   maxlength="200" value="{{ val('institution') }}" placeholder="e.g. Fermilab">
           </div>
-          <div class="col-12">
-            <button type="submit" class="btn btn-primary">Save contact info</button>
+          <div class="col-md-6">
+            <label class="form-label" for="phone">Office phone</label>
+            <input class="form-control" type="tel" id="phone" name="phone"
+                   maxlength="64" value="{{ val('phone') }}" placeholder="+1 630 840 0000">
           </div>
-        </form>
+          <div class="col-md-6">
+            <label class="form-label" for="mobile_phone">Mobile phone</label>
+            <input class="form-control" type="tel" id="mobile_phone" name="mobile_phone"
+                   maxlength="64" value="{{ val('mobile_phone') }}" placeholder="+1 630 555 0000">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="chat_handle">Slack / Mattermost handle</label>
+            <input class="form-control" type="text" id="chat_handle" name="chat_handle"
+                   maxlength="100" value="{{ val('chat_handle') }}" placeholder="@jdoe">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="timezone">Timezone</label>
+            <input class="form-control" type="text" id="timezone" name="timezone" list="timezone-list"
+                   maxlength="64" value="{{ val('timezone') }}" placeholder="America/Chicago">
+            <datalist id="timezone-list">
+              {% for tz in timezones %}<option value="{{ tz }}">{% endfor %}
+            </datalist>
+            <div class="form-text">IANA name; calendar popovers show your local time.</div>
+          </div>
+        </div>
       </div>
-    </div>
+
+      <div class="card mb-3">
+        <div class="card-header">Alternate contact</div>
+        <div class="card-body row g-3">
+          <div class="col-md-6">
+            <label class="form-label" for="alt_contact_name">Name</label>
+            <input class="form-control" type="text" id="alt_contact_name" name="alt_contact_name"
+                   maxlength="120" value="{{ val('alt_contact_name') }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="alt_contact_phone">Phone</label>
+            <input class="form-control" type="tel" id="alt_contact_phone" name="alt_contact_phone"
+                   maxlength="64" value="{{ val('alt_contact_phone') }}">
+          </div>
+          <div class="col-12 form-text mt-1">
+            Someone who can reach you or stand in if you cannot be contacted during your shift.
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary">Save profile</button>
+    </form>
 
     <p class="text-muted small mt-3">
-      Name and email come from your login provider and cannot be edited here.
-      Administrators can also update contact info on the Users page.
+      Your login email comes from your login provider and cannot be edited here.
+      Administrators can also update phone and institution on the Users page.
     </p>
   </div>
 </div>
