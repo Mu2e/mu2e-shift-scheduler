@@ -111,3 +111,9 @@ covered; page-render smoke tests catch template `url_for` breakage.
   (`store.rename_person`, `preferences.rename_submissions`); `email_log` and saved
   result JSONs are left as historical records. `users.name_custom=1` stops SSO
   logins overwriting the chosen name; `users.sso_name` holds the provider name.
+- Role preview: admins `POST /admin/preview role=<role>` to act as a lower role
+  for the session (`session["preview_role"]`). `auth.load_user` applies it via
+  `User.apply_preview`, so `role`/`is_admin`/`admin_required` all see the
+  previewed role while `real_role` keeps the stored one. `POST /preview/exit`
+  (no admin check) clears it; login/logout signals also clear it. Roles are
+  `auth.ROLES`; add new roles there and in `ROLE_LABELS`.

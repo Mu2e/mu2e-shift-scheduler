@@ -3,11 +3,14 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_user, logout_user
 
 from .auth import (
+    PREVIEW_SESSION_KEY,
     PROFILE_FIELDS,
+    ROLE_LABELS,
+    ROLES,
     authenticate_local,
     admin_required,
     find_user_by_name,
@@ -197,6 +200,36 @@ def profile():
         return redirect(url_for("auth.profile"))
     return render_template("profile.html", nav_active="profile", form=None,
                            timezones=timezone_names())
+
+
+def _safe_next(default_endpoint: str) -> str:
+    """Local redirect target from the form, or the default page."""
+    target = request.form.get("next", "")
+    if target.startswith("/") and not target.startswith("//"):
+        return target
+    return url_for(default_endpoint)
+
+
+@bp.route("/admin/preview", methods=["POST"])
+@admin_required
+def start_preview():
+    role = request.form.get("role", "")
+    if role not in ROLES or role == "admin":
+        flash("Choose a non-administrator role to preview.", "danger")
+        return redirect(_safe_next("main.welcome"))
+    session[PREVIEW_SESSION_KEY] = role
+    current_app.logger.info("user %s started role preview as %s", current_user.get_id(), role)
+    flash(f"Previewing the site as {ROLE_LABELS[role]}.", "info")
+    # Admin pages would bounce a previewing user, so land on the home page.
+    return redirect(url_for("main.welcome"))
+
+
+@bp.route("/preview/exit", methods=["POST"])
+def exit_preview():
+    if session.pop(PREVIEW_SESSION_KEY, None):
+        current_app.logger.info("user %s ended role preview", current_user.get_id())
+        flash("Role preview ended.", "info")
+    return redirect(_safe_next("main.welcome"))
 
 
 @bp.route("/admin/users")

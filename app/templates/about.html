@@ -105,6 +105,8 @@
               <tr><td><code>POST /admin/taxonomy/*</code>, <code>POST /admin/settings</code></td><td>Admin: classification taxonomy and calendar defaults.</td></tr>
               <tr><td><code>GET|POST /configuration</code>, <code>GET /admin/users</code></td><td>Admin: file manager / taxonomy / defaults, and user roles.</td></tr>
               <tr><td><code>GET /preferences/*</code></td><td>Shift preference submission and review.</td></tr>
+              <tr><td><code>GET|POST /profile</code></td><td>Self-service profile: display name (renames stored assignments and preferences), contact email, phones, institution, chat handle, timezone, alternate contact.</td></tr>
+              <tr><td><code>POST /admin/preview</code>, <code>POST /preview/exit</code></td><td>Admin: view the site as a lower role (<code>role</code> form field) for the current login session; exit restores admin rights. The stored role is unchanged.</td></tr>
             </tbody>
           </table>
         </div>

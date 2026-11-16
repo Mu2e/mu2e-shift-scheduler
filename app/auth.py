@@ -15,6 +15,12 @@ login_manager.login_view = "auth.login"
 oauth = OAuth()
 
 
+# Account roles, least to most privileged.
+ROLES = ("user", "admin")
+ROLE_LABELS = {"user": "Shifter (user)", "admin": "Administrator"}
+PREVIEW_SESSION_KEY = "preview_role"
+
+
 # Self-service profile fields beyond phone/institution (all TEXT, default '').
 PROFILE_FIELDS = (
     "contact_email",
@@ -32,6 +38,10 @@ class User(UserMixin):
         self.email = row["email"]
         self.name = row["name"] or row["email"]
         self.role = row["role"] or "user"
+        # Role preview: an admin may view the site as a lower role. real_role
+        # keeps the stored role; role/is_admin reflect the previewed one.
+        self.real_role = self.role
+        self.previewing = False
         self.auth_provider = row["auth_provider"] or "local"
         keys = row.keys()
         for field in ("phone", "institution", "sso_name") + PROFILE_FIELDS:
@@ -46,6 +56,16 @@ class User(UserMixin):
     @property
     def is_admin(self) -> bool:
         return self.role == "admin"
+
+    @property
+    def role_label(self) -> str:
+        return ROLE_LABELS.get(self.role, self.role)
+
+    def apply_preview(self, role: Optional[str]) -> None:
+        """Act as *role* for this request; only real admins may preview."""
+        if self.real_role == "admin" and role in ROLES and role != "admin":
+            self.role = role
+            self.previewing = True
 
 
 def _utcnow() -> str:
@@ -176,7 +196,7 @@ def admin_count() -> int:
 
 
 def update_user_role(user_id: str, role: str, acting_user_id: str) -> tuple[bool, str]:
-    if role not in {"user", "admin"}:
+    if role not in ROLES:
         return False, "Invalid role."
 
     with connect() as conn:
@@ -258,7 +278,10 @@ def set_display_name(user_id: str, name: str, custom: bool) -> Optional[User]:
 
 @login_manager.user_loader
 def load_user(user_id: str) -> Optional[User]:
-    return get_user(user_id)
+    user = get_user(user_id)
+    if user is not None:
+        user.apply_preview(session.get(PREVIEW_SESSION_KEY))
+    return user
 
 
 def authenticate_local(email: str, password: str) -> Optional[User]:
@@ -323,8 +346,20 @@ def upsert_oidc_user(claims: dict) -> User:
 
 
 def init_login(app) -> None:
+    from flask_login import user_logged_in, user_logged_out
+
     login_manager.init_app(app)
     configure_oauth(app)
+    app.jinja_env.globals["preview_roles"] = [
+        (role, ROLE_LABELS[role]) for role in ROLES if role != "admin"
+    ]
+
+    # A role preview never outlives the login session that started it.
+    def _clear_preview(sender, **extra):
+        session.pop(PREVIEW_SESSION_KEY, None)
+
+    user_logged_in.connect(_clear_preview, app, weak=False)
+    user_logged_out.connect(_clear_preview, app, weak=False)
 
     @app.before_request
     def require_login():
