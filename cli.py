@@ -128,6 +128,13 @@ def cmd_serve(args: argparse.Namespace) -> None:
         config_path=args.config,
         preferences_shifts_csv=args.preferences_shifts,
         preferences_json=args.preferences_json,
+        signup_overrides={
+            "enabled": args.signup_enabled,
+            "allow_block_signup": args.signup_allow_block,
+            "allow_release_assigned": args.signup_allow_release_assigned,
+            "signup_cutoff_hours": args.signup_cutoff_hours,
+            "release_cutoff_hours": args.signup_release_cutoff_hours,
+        },
     )
     if args.show_admin_login is not None:
         app.config["SHOW_ADMIN_LOGIN"] = args.show_admin_login
@@ -282,6 +289,33 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FILE",
         help="JSON file where preferences are stored (default: preferences.json).",
     )
+    sg = sv.add_argument_group(
+        "shift self-signup",
+        "Override the config.yaml 'signup:' section and MU2E_SIGNUP_* environment variables.",
+    )
+    sg_on = sg.add_mutually_exclusive_group()
+    sg_on.add_argument("--signup", dest="signup_enabled", action="store_true", default=None,
+                       help="Enable shift self-signup (MU2E_SIGNUP_ENABLED).")
+    sg_on.add_argument("--no-signup", dest="signup_enabled", action="store_false",
+                       help="Disable shift self-signup.")
+    sg_blk = sg.add_mutually_exclusive_group()
+    sg_blk.add_argument("--signup-block", dest="signup_allow_block", action="store_true", default=None,
+                        help="Offer 'sign up for whole block' (MU2E_SIGNUP_ALLOW_BLOCK).")
+    sg_blk.add_argument("--no-signup-block", dest="signup_allow_block", action="store_false",
+                        help="Only allow individual-shift sign-up.")
+    sg_rel = sg.add_mutually_exclusive_group()
+    sg_rel.add_argument("--signup-release-assigned", dest="signup_allow_release_assigned",
+                        action="store_true", default=None,
+                        help="Let shifters drop shifts assigned by the solver or an admin "
+                             "(MU2E_SIGNUP_ALLOW_RELEASE_ASSIGNED).")
+    sg_rel.add_argument("--no-signup-release-assigned", dest="signup_allow_release_assigned",
+                        action="store_false",
+                        help="Shifters may only drop shifts they signed up for themselves (default).")
+    sg.add_argument("--signup-cutoff-hours", type=float, default=None, metavar="H",
+                    help="Refuse sign-up within H hours of shift start (MU2E_SIGNUP_CUTOFF_HOURS, default 0).")
+    sg.add_argument("--signup-release-cutoff-hours", type=float, default=None, metavar="H",
+                    help="Refuse release within H hours of shift start "
+                         "(MU2E_SIGNUP_RELEASE_CUTOFF_HOURS, default 0).")
     admin_login = sv.add_mutually_exclusive_group()
     admin_login.add_argument(
         "--show-admin-login",

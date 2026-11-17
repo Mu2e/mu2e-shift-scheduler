@@ -24,7 +24,7 @@
   {% if class_schedules %}
   <div class="table-responsive">
     <table class="table table-sm mb-0 align-middle">
-      <thead><tr><th>Name</th><th>Shifts</th><th>Assigned</th><th>Source</th><th>Updated</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Shifts</th><th>Assigned</th><th>Self-signup</th><th>Source</th><th>Updated</th><th></th></tr></thead>
       <tbody>
         {% for s in class_schedules %}
         <tr>
@@ -34,6 +34,17 @@
           </td>
           <td>{{ s.n_shifts }}</td>
           <td>{{ s.n_assigned }}</td>
+          <td class="text-nowrap">
+            {% if s.signup_open %}<span class="badge text-bg-success">open</span>
+            {% else %}<span class="badge text-bg-secondary">closed</span>{% endif %}
+            {% if current_user.is_authenticated and current_user.is_admin %}
+            <form method="post" action="{{ url_for('signup.signup_toggle', schedule_id=s.id) }}" class="d-inline m-0">
+              <input type="hidden" name="open" value="{{ 0 if s.signup_open else 1 }}">
+              <input type="hidden" name="next" value="{{ url_for('main.schedules_page') }}">
+              <button type="submit" class="btn btn-link btn-sm p-0 ms-1">{{ 'Close' if s.signup_open else 'Open' }}</button>
+            </form>
+            {% endif %}
+          </td>
           <td><span class="badge text-bg-light text-muted">{{ s.source }}</span></td>
           <td class="text-muted small">{{ s.updated_at[:16].replace('T', ' ') }}</td>
           <td class="text-end">

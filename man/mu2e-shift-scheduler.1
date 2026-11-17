@@ -11,6 +11,11 @@ mu2e-shift-scheduler \- command-line interface to the Mu2e shift scheduler
 .B mu2e-shift-scheduler
 .I serve
 [\fB\-\-host\fR \fIHOST\fR] [\fB\-\-port\fR \fIPORT\fR]
+[\fB\-\-signup\fR|\fB\-\-no\-signup\fR]
+[\fB\-\-signup\-block\fR|\fB\-\-no\-signup\-block\fR]
+[\fB\-\-signup\-release\-assigned\fR|\fB\-\-no\-signup\-release\-assigned\fR]
+[\fB\-\-signup\-cutoff\-hours\fR \fIH\fR]
+[\fB\-\-signup\-release\-cutoff\-hours\fR \fIH\fR]
 .br
 .B mu2e-shift-scheduler
 .I collab-sync
@@ -33,6 +38,38 @@ subcommand copies the Mu2e Collaboration member directory into the
 application database. Run each subcommand with
 .B \-\-help
 for the full option list.
+.SH SERVE: SHIFT SELF-SIGNUP
+Logged-in shifters can claim open shifts (or every shift of a Shift Setup
+block) and release shifts they hold, from the calendar right-click menu or
+the \fI/signup\fR page. These options override the \fIsignup:\fR section of
+\fIconfig/config.yaml\fR and the \fBMU2E_SIGNUP_*\fR environment variables
+(precedence: command line > environment > .env > config file > defaults).
+.TP
+.BR \-\-signup ", " \-\-no\-signup
+Enable or disable self-signup (\fBMU2E_SIGNUP_ENABLED\fR; default on).
+.TP
+.BR \-\-signup\-block ", " \-\-no\-signup\-block
+Offer "sign up for the whole block" (\fBMU2E_SIGNUP_ALLOW_BLOCK\fR; default on).
+A block claim is all or nothing.
+.TP
+.BR \-\-signup\-release\-assigned ", " \-\-no\-signup\-release\-assigned
+Whether shifters may drop shifts assigned by the solver or an administrator
+(\fBMU2E_SIGNUP_ALLOW_RELEASE_ASSIGNED\fR; default off: only their own sign-ups).
+.TP
+.BI \-\-signup\-cutoff\-hours " H"
+Refuse sign-up within \fIH\fR hours of a shift's start (\fBMU2E_SIGNUP_CUTOFF_HOURS\fR).
+.TP
+.BI \-\-signup\-release\-cutoff\-hours " H"
+Refuse self-release within \fIH\fR hours of a shift's start
+(\fBMU2E_SIGNUP_RELEASE_CUTOFF_HOURS\fR; config.yaml ships 24).
+.PP
+\fBMU2E_SIGNUP_REQUIRE_COLLAB_MEMBER\fR=1 (config \fIrequire_collab_member\fR)
+restricts self-signup to accounts that match an active Mu2e Collaboration
+directory member. Example:
+.PP
+.nf
+mu2e-shift-scheduler serve --port 8001 --no-signup-block --signup-release-cutoff-hours 48
+.fi
 .SH COLLAB-SYNC
 Reads
 .I /api/v1/users/

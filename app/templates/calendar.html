@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_components.html" import calendar_entry, contact_link %}
+{% from "_components.html" import calendar_entry, contact_link, signup_attrs %}
 {% block title %}Calendar - Mu2e Shift Scheduler{% endblock %}
 
 {% block head %}
@@ -7,22 +7,26 @@
   .calendar-grid {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--mu2e-border);
     border-bottom: 0;
     border-right: 0;
     background: #fff;
+    border-radius: .5rem;
+    overflow: hidden;
   }
   .calendar-header,
   .calendar-day {
-    border-right: 1px solid #dee2e6;
-    border-bottom: 1px solid #dee2e6;
+    border-right: 1px solid var(--mu2e-border);
+    border-bottom: 1px solid var(--mu2e-border);
   }
   .calendar-header {
     padding: .55rem .5rem;
-    background: #343a40;
-    color: #fff;
-    font-size: .82rem;
+    background: var(--mu2e-paper-soft);
+    color: var(--mu2e-muted);
+    font-size: .75rem;
     font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
     text-align: center;
   }
   .calendar-day {
@@ -34,11 +38,11 @@
     min-height: 320px;
   }
   .calendar-day.out-of-month {
-    background: #f1f3f5;
+    background: #f1f5f9;
   }
   .calendar-day.is-today {
-    background: #e7f1ff;
-    outline: 2px solid #0d6efd;
+    background: #f0fdfa;
+    outline: 2px solid var(--mu2e-primary);
     outline-offset: -2px;
   }
   .calendar-date {
@@ -51,10 +55,10 @@
     gap: .4rem;
   }
   .is-today .calendar-date {
-    color: #0d6efd;
+    color: var(--mu2e-primary);
   }
   .today-label {
-    background: #0d6efd;
+    background: var(--mu2e-primary);
     color: #fff;
     border-radius: 999px;
     font-size: .62rem;
@@ -64,8 +68,8 @@
     padding: .05rem .45rem;
   }
   .assignment-card {
-    border-left: 4px solid #198754;
-    background: #f8f9fa;
+    border-left: 4px solid var(--mu2e-primary);
+    background: var(--mu2e-paper-soft);
     border-radius: 4px;
     padding: .35rem .4rem;
     margin-bottom: .35rem;
@@ -73,9 +77,17 @@
     line-height: 1.25;
   }
   .assignment-card.empty-shift {
-    border-left-color: #dc3545;
-    background: #fff5f5;
+    border-left-color: #dc2626;
+    background: #fef2f2;
   }
+  .assignment-card.mine,
+  .list-group-item.mine {
+    border-left-color: var(--mu2e-accent);
+    background: var(--mu2e-accent-soft);
+  }
+  .list-group-item.mine { border-left: 4px solid var(--mu2e-accent); }
+  .assignment-card.can-claim { cursor: context-menu; }
+  .assignment-card.can-claim:hover { box-shadow: 0 0 0 2px rgba(15, 118, 110, .35); }
   .assignment-card.span-cont {
     border-left-style: dashed;
   }
@@ -306,6 +318,8 @@
   {% if selected_schedule.classification_name %}({{ selected_schedule.classification_name }}){% endif %}
   &nbsp;&bull;&nbsp; updated {{ selected_schedule.updated_at[:16].replace('T', ' ') }}
   {% if selected_schedule.id == default_schedule_id %}&nbsp;&bull;&nbsp;<span class="badge text-bg-primary">default</span>{% endif %}
+  {% if can_signup %}&nbsp;&bull;&nbsp;Right-click an empty shift to sign up, or use the
+  <a href="{{ url_for('signup.signup_page', schedule=selected_schedule.name) }}">Sign-Up page</a>.{% endif %}
 </p>
 {% endif %}
 
@@ -315,10 +329,12 @@
   {% if agenda.day.entries %}
   <ul class="list-group list-group-flush">
     {% for entry in agenda.day.entries %}
-    <li class="list-group-item d-flex align-items-center gap-3"
+    <li class="list-group-item d-flex align-items-center gap-3 {{ 'mine' if (entry.get('signup') or {}).mine }}"
         data-shift-id="{{ entry.shift_id }}"
         data-shift-label="{{ entry.shift_name }}"
-        data-person="{{ entry.person.name if entry.person else '' }}">
+        data-shift-when="{{ entry.start_time }}–{{ entry.end_time }}"
+        data-person="{{ entry.person.name if entry.person else '' }}"
+        {{ signup_attrs(entry) }}>
       <span class="text-nowrap fw-bold">{{ entry.start_time }}&ndash;{{ entry.end_time }}</span>
       <span>
         {{ entry.shift_name }}:
@@ -366,14 +382,42 @@
 </section>
 {% endif %}
 
-{% if can_assign %}
-{# Right-click context menu + assign modal (admins, stored schedules only) #}
+{% if can_assign or can_signup %}
+{# Right-click context menu: self-signup items for every logged-in user,
+   admin items (assign / remind / clear) for administrators. Stored schedules only. #}
 <div id="assignContextMenu" class="dropdown-menu shadow" style="position: fixed; display: none; z-index: 1080;">
   <h6 class="dropdown-header" id="assignMenuHeader"></h6>
+  {% if can_signup %}
+  <button type="button" class="dropdown-item" id="signupMenuClaim">Sign me up for this shift</button>
+  <button type="button" class="dropdown-item" id="signupMenuClaimBlock">Sign me up for the whole block</button>
+  <button type="button" class="dropdown-item text-danger" id="signupMenuRelease">Remove me from this shift</button>
+  <span class="dropdown-item-text small text-muted" id="signupMenuNote"></span>
+  {% endif %}
+  {% if can_assign %}
+  {% if can_signup %}<div class="dropdown-divider" id="assignMenuDivider"></div>
+  <h6 class="dropdown-header">Administrator</h6>{% endif %}
   <button type="button" class="dropdown-item" id="assignMenuAssign">Assign person&hellip;</button>
   <button type="button" class="dropdown-item" id="assignMenuEmail">Send reminder email</button>
   <button type="button" class="dropdown-item text-danger" id="assignMenuClear">Clear assignment</button>
+  {% endif %}
 </div>
+
+{% if can_signup %}
+<form method="post" action="{{ url_for('signup.signup_claim') }}" id="signupClaimForm" class="d-none">
+  <input type="hidden" name="schedule_id" value="{{ selected_schedule.id }}">
+  <input type="hidden" name="shift_id" value="">
+  <input type="hidden" name="scope" value="shift">
+  <input type="hidden" name="next" value="{{ page_url }}">
+</form>
+<form method="post" action="{{ url_for('signup.signup_release') }}" id="signupReleaseForm" class="d-none">
+  <input type="hidden" name="schedule_id" value="{{ selected_schedule.id }}">
+  <input type="hidden" name="shift_id" value="">
+  <input type="hidden" name="next" value="{{ page_url }}">
+</form>
+{% endif %}
+{% endif %}
+
+{% if can_assign %}
 
 <form method="post" action="{{ url_for('admin.reminders_send_one') }}" id="reminderForm" class="d-none">
   <input type="hidden" name="schedule_id" value="{{ selected_schedule.id }}">
@@ -432,26 +476,48 @@
 {% endblock %}
 
 {% block scripts %}
-{% if can_assign %}
+{% if can_assign or can_signup %}
 <script>
 (function () {
   "use strict";
   var menu = document.getElementById("assignContextMenu");
-  var modalEl = document.getElementById("assignModal");
+  var modalEl = {% if can_assign %}document.getElementById("assignModal"){% else %}null{% endif %};  // admin only
   var current = null;   // the entry element the menu was opened on
-
+  function $(id) { return document.getElementById(id); }
+  function show(id, on) { var el = $(id); if (el) el.classList.toggle("d-none", !on); }
   function hideMenu() { menu.style.display = "none"; }
 
   document.querySelectorAll("[data-shift-id]").forEach(function (el) {
     el.addEventListener("contextmenu", function (e) {
       e.preventDefault();
       current = el;
-      var person = el.dataset.person;
-      document.getElementById("assignMenuHeader").textContent =
-        el.dataset.shiftLabel + (person ? " — " + person : " — Empty");
-      // Email and clear only make sense for assigned shifts.
-      document.getElementById("assignMenuEmail").classList.toggle("disabled", !person);
-      document.getElementById("assignMenuClear").classList.toggle("disabled", !person);
+      var d = el.dataset, person = d.person;
+      $("assignMenuHeader").textContent =
+        d.shiftLabel + " " + (d.shiftWhen || "") + (person ? " — " + person : " — Empty");
+
+      // Self-signup items: only the actions the server said are allowed.
+      var claim = d.canClaim === "1", block = d.canClaimBlock === "1",
+          release = d.canRelease === "1", anySignup = claim || block || release;
+      show("signupMenuClaim", claim);
+      show("signupMenuClaimBlock", block);
+      if ($("signupMenuClaimBlock")) {
+        $("signupMenuClaimBlock").textContent =
+          "Sign me up for the whole block (" + (d.blockSize || "?") + " shifts)";
+      }
+      show("signupMenuRelease", release);
+      var note = "";
+      if (!anySignup) {
+        if (d.mine === "1") note = "You hold this shift: " + (d.releaseReason || "it cannot be released here") + ".";
+        else if (person) note = "Assigned to " + person + ".";
+        else if (d.canClaim === "0") note = "Sign-up is closed for this shift (started or past the cutoff).";
+      }
+      if ($("signupMenuNote")) { $("signupMenuNote").textContent = note; show("signupMenuNote", !!note); }
+      show("assignMenuDivider", !!$("assignMenuAssign"));
+
+      // Admin items: email and clear only make sense for assigned shifts.
+      if ($("assignMenuEmail")) $("assignMenuEmail").classList.toggle("disabled", !person);
+      if ($("assignMenuClear")) $("assignMenuClear").classList.toggle("disabled", !person);
+
       menu.style.display = "block";
       // Keep the menu inside the viewport.
       var x = Math.min(e.clientX, window.innerWidth - menu.offsetWidth - 8);
@@ -459,43 +525,74 @@
       menu.style.left = x + "px";
       menu.style.top = y + "px";
     });
-    el.title = "Right-click to assign (admin)";
+    el.title = el.dataset.canClaim === "1" ? "Right-click to sign up"
+             : el.dataset.canRelease === "1" ? "Right-click for options"
+             : (modalEl ? "Right-click to assign (admin)" : "");
   });
 
-  document.getElementById("assignMenuAssign").addEventListener("click", function () {
-    hideMenu();
-    if (!current) return;
-    document.getElementById("assignShiftId").value = current.dataset.shiftId;
-    document.getElementById("assignModalShift").textContent =
-      current.dataset.shiftLabel + " (" + current.dataset.shiftId + ")";
-    var personInput = document.getElementById("assignPerson");
-    personInput.value = current.dataset.person || "";
-    var modal = new bootstrap.Modal(modalEl);
-    modal.show();
-    modalEl.addEventListener("shown.bs.modal", function () { personInput.focus(); }, { once: true });
-  });
+  function submitSignup(formId, scope) {
+    var form = $(formId);
+    form.querySelector("[name=shift_id]").value = current.dataset.shiftId;
+    var scopeInput = form.querySelector("[name=scope]");
+    if (scopeInput) scopeInput.value = scope || "shift";
+    form.submit();
+  }
+  if ($("signupMenuClaim")) {
+    $("signupMenuClaim").addEventListener("click", function () {
+      hideMenu();
+      if (current && current.dataset.canClaim === "1") submitSignup("signupClaimForm", "shift");
+    });
+    $("signupMenuClaimBlock").addEventListener("click", function () {
+      hideMenu();
+      if (!current || current.dataset.canClaimBlock !== "1") return;
+      if (!confirm("Sign up for all " + current.dataset.blockSize + " shifts in this block?")) return;
+      submitSignup("signupClaimForm", "block");
+    });
+    $("signupMenuRelease").addEventListener("click", function () {
+      hideMenu();
+      if (!current || current.dataset.canRelease !== "1") return;
+      if (!confirm("Remove yourself from " + current.dataset.shiftLabel + "? The shift becomes open to others.")) return;
+      submitSignup("signupReleaseForm");
+    });
+  }
 
-  document.getElementById("assignMenuEmail").addEventListener("click", function () {
-    hideMenu();
-    if (!current || !current.dataset.person) return;
-    if (!confirm("Send a reminder email to " + current.dataset.person + " for " +
-                 current.dataset.shiftLabel + "?")) return;
-    document.getElementById("reminderShiftId").value = current.dataset.shiftId;
-    document.getElementById("reminderForm").submit();
-  });
+  {% if can_assign %}
+  if (modalEl) {
+    $("assignMenuAssign").addEventListener("click", function () {
+      hideMenu();
+      if (!current) return;
+      $("assignShiftId").value = current.dataset.shiftId;
+      $("assignModalShift").textContent =
+        current.dataset.shiftLabel + " (" + current.dataset.shiftId + ")";
+      var personInput = $("assignPerson");
+      personInput.value = current.dataset.person || "";
+      var modal = new bootstrap.Modal(modalEl);
+      modal.show();
+      modalEl.addEventListener("shown.bs.modal", function () { personInput.focus(); }, { once: true });
+    });
 
-  document.getElementById("assignMenuClear").addEventListener("click", function () {
-    hideMenu();
-    if (!current) return;
-    if (!current.dataset.person) return;
-    if (!confirm("Clear the assignment for " + current.dataset.shiftLabel +
-                 " (" + current.dataset.person + ")?")) return;
-    document.getElementById("assignShiftId").value = current.dataset.shiftId;
-    document.getElementById("assignPerson").value = "";
-    modalEl.querySelector("form").submit();
-  });
+    $("assignMenuEmail").addEventListener("click", function () {
+      hideMenu();
+      if (!current || !current.dataset.person) return;
+      if (!confirm("Send a reminder email to " + current.dataset.person + " for " +
+                   current.dataset.shiftLabel + "?")) return;
+      $("reminderShiftId").value = current.dataset.shiftId;
+      $("reminderForm").submit();
+    });
 
-  document.addEventListener("click", hideMenu);
+    $("assignMenuClear").addEventListener("click", function () {
+      hideMenu();
+      if (!current || !current.dataset.person) return;
+      if (!confirm("Clear the assignment for " + current.dataset.shiftLabel +
+                   " (" + current.dataset.person + ")?")) return;
+      $("assignShiftId").value = current.dataset.shiftId;
+      $("assignPerson").value = "";
+      modalEl.querySelector("form").submit();
+    });
+  }
+  {% endif %}
+
+  document.addEventListener("click", function (e) { if (!menu.contains(e.target)) hideMenu(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") hideMenu(); });
   window.addEventListener("scroll", hideMenu, true);
 })();

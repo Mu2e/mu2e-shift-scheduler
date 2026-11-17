@@ -20,6 +20,7 @@ def create_app(
     config_path: str = "config/config.yaml",
     preferences_shifts_csv: Optional[str] = None,
     preferences_json: str = "preferences.json",
+    signup_overrides: Optional[dict] = None,
 ) -> Flask:
     app = Flask(__name__)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
@@ -81,6 +82,13 @@ def create_app(
 
     from .api_routes import bp as api_bp
     app.register_blueprint(api_bp)
+
+    # Shift self-signup (config: defaults < config.yaml < env < CLI overrides)
+    from . import signup
+    app.register_blueprint(signup.bp)
+    app.config["SIGNUP"] = signup.resolve_config(
+        signup.load_yaml_section(app.config["SCHEDULER_CONFIG"]), overrides=signup_overrides
+    )
 
     from .auth import init_auth_db, init_login, seed_admin
     from .auth_routes import bp as auth_bp

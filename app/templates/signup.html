@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}Shift Sign-Up - Mu2e Shift Scheduler{% endblock %}
+
+{% block head %}
+<style>
+  .block-card .shift-row { border-left: 4px solid var(--mu2e-primary); }
+  .block-card .shift-row.open { border-left-color: #dc2626; }
+  .block-card .shift-row.mine { border-left-color: var(--mu2e-accent); background: var(--mu2e-accent-soft); }
+  .identity dt { font-weight: 500; color: var(--mu2e-muted); font-size: .8rem; }
+  .identity dd { margin-bottom: .4rem; }
+</style>
+{% endblock %}
+
+{% macro claim_form(shift_id, label, scope='shift', css='btn-primary', confirm_text='') %}
+<form method="post" action="{{ url_for('signup.signup_claim') }}" class="d-inline m-0"
+      {% if confirm_text %}onsubmit="return confirm({{ confirm_text | tojson | forceescape }});"{% endif %}>
+  <input type="hidden" name="schedule_id" value="{{ schedule.id }}">
+  <input type="hidden" name="shift_id" value="{{ shift_id }}">
+  <input type="hidden" name="scope" value="{{ scope }}">
+  <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+  <button type="submit" class="btn btn-sm {{ css }}">{{ label }}</button>
+</form>
+{% endmacro %}
+
+{% macro release_form(shift_id, label='Remove me') %}
+<form method="post" action="{{ url_for('signup.signup_release') }}" class="d-inline m-0"
+      onsubmit="return confirm('Remove yourself from this shift? It becomes open to others.');">
+  <input type="hidden" name="schedule_id" value="{{ schedule.id }}">
+  <input type="hidden" name="shift_id" value="{{ shift_id }}">
+  <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+  <button type="submit" class="btn btn-sm btn-outline-danger">{{ label }}</button>
+</form>
+{% endmacro %}
+
+{% block content %}
+<div class="d-flex align-items-start gap-3 mb-3 flex-wrap">
+  <div class="me-auto">
+    <h1 class="h3 mb-1">Shift Sign-Up</h1>
+    <p class="text-muted mb-0 small">
+      Claim open shifts or whole blocks, and remove yourself from shifts you signed up for.
+      You can also right-click a shift on the <a href="{{ url_for('main.calendar_view', schedule=schedule.name if schedule else None) }}">calendar</a>.
+    </p>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-8">
+    <form method="get" action="{{ url_for('signup.signup_page') }}" class="card card-body d-flex flex-row flex-wrap gap-2 align-items-end">
+      <div class="flex-grow-1">
+        <label class="form-label small mb-1" for="signupSchedule">Schedule</label>
+        <select class="form-select form-select-sm" id="signupSchedule" name="schedule">
+          {% for s in schedules %}
+          <option value="{{ s.name }}" {{ 'selected' if schedule and s.id == schedule.id }}>
+            {{ s.name }}{% if s.classification_name %} ({{ s.classification_name }}){% endif %}{% if not s.signup_open %} — closed to sign-up{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label small mb-1" for="signupShow">Show</label>
+        <select class="form-select form-select-sm" id="signupShow" name="show">
+          <option value="open" {{ 'selected' if show == 'open' }}>Open shifts</option>
+          <option value="mine" {{ 'selected' if show == 'mine' }}>My shifts</option>
+          <option value="all" {{ 'selected' if show == 'all' }}>All shifts</option>
+        </select>
+      </div>
+      <div class="form-check mb-1">
+        <input class="form-check-input" type="checkbox" id="signupPast" name="past" value="1" {{ 'checked' if include_past }}>
+        <label class="form-check-label small" for="signupPast">Include past</label>
+      </div>
+      <button type="submit" class="btn btn-sm btn-primary">Show</button>
+    </form>
+  </div>
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header small">Signing up as</div>
+      <div class="card-body py-2">
+        <dl class="identity mb-0 small">
+          <dt>Name on the schedule</dt><dd>{{ ident.person or '—' }}</dd>
+          <dt>Institution</dt><dd>{{ ident.institution or '—' }}</dd>
+          <dt>Contact</dt><dd>{{ ident.email or '—' }}{% if ident.phone %} · {{ ident.phone }}{% endif %}</dd>
+          <dt>Collaboration directory</dt>
+          <dd>
+            {% if ident.member %}
+              matched{% if ident.member.member_number %} (member #{{ ident.member.member_number }}){% endif %}
+              {% if not ident.member.is_active %}<span class="badge text-bg-warning">inactive</span>{% endif %}
+            {% else %}<span class="text-muted">no match</span>{% endif %}
+          </dd>
+        </dl>
+        <a class="small" href="{{ url_for('auth.profile') }}">Edit my profile</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if problem %}
+<div class="alert alert-warning">{{ problem }}</div>
+{% endif %}
+
+{% if not schedule %}
+<div class="alert alert-info">No stored schedules are available yet.</div>
+{% else %}
+
+{% if my_upcoming %}
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center">
+    My upcoming shifts in {{ schedule.name }}
+    <span class="badge badge-mine ms-2">{{ my_upcoming | length }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 align-middle">
+      <thead><tr><th>Date</th><th>Time</th><th>Shift</th><th>Block</th><th>Source</th><th></th></tr></thead>
+      <tbody>
+        {% for st in my_upcoming %}
+        <tr>
+          <td class="text-nowrap">{{ st.row.date }}{% if st.row.date_end and st.row.date_end != st.row.date %} – {{ st.row.date_end }}{% endif %}</td>
+          <td class="text-nowrap">{{ st.row.start_time }}–{{ st.row.end_time }}</td>
+          <td>{{ st.row.shift_name or st.row.shift_id }}</td>
+          <td class="text-muted small">{{ st.row.block_name }}</td>
+          <td><span class="badge text-bg-light text-muted">{{ st.row.assignment_source or 'scheduler' }}</span></td>
+          <td class="text-end">
+            {% if st.can_release %}{{ release_form(st.row.shift_id) }}
+            {% else %}<span class="text-muted small">{{ st.release_reason }}</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if groups %}
+{% for g in groups %}
+<div class="card block-card mb-3">
+  <div class="card-header d-flex flex-wrap align-items-center gap-2">
+    <span>
+      {% if g.block_name %}{{ g.block_name }}{% if g.week %} · week {{ g.week }}{% endif %} · {% endif %}
+      {{ g.date }}{% if g.date_end and g.date_end != g.date %} – {{ g.date_end }}{% endif %}
+      {% if g.days %}<span class="text-muted fw-normal small">({{ g.days }})</span>{% endif %}
+    </span>
+    <span class="badge {{ 'text-bg-danger' if g.n_open else 'text-bg-light text-muted' }}">{{ g.n_open }} open</span>
+    {% if g.can_claim_block %}
+    <span class="ms-auto">
+      {{ claim_form(g.first_shift_id, 'Sign up for whole block (' ~ (g.rows | length) ~ ' shifts)', 'block', 'btn-primary',
+                    'Sign up for all ' ~ (g.rows | length) ~ ' shifts in this block?') }}
+    </span>
+    {% endif %}
+  </div>
+  <ul class="list-group list-group-flush">
+    {% for st in g.rows %}
+    <li class="list-group-item shift-row d-flex flex-wrap align-items-center gap-3 {{ 'mine' if st.mine }} {{ 'open' if not st.person }}">
+      <span class="fw-semibold text-nowrap">{{ st.row.start_time }}–{{ st.row.end_time }}</span>
+      <span>{{ st.row.shift_name or st.row.shift_id }}</span>
+      <span class="text-muted small">
+        {% if st.mine %}<span class="badge badge-mine">you</span>
+        {% elif st.person %}{{ st.person }}
+        {% else %}Empty{% endif %}
+      </span>
+      <span class="ms-auto">
+        {% if st.can_claim %}{{ claim_form(st.row.shift_id, 'Sign up', 'shift', 'btn-outline-primary') }}
+        {% elif st.can_release %}{{ release_form(st.row.shift_id) }}
+        {% elif st.mine and st.release_reason %}<span class="text-muted small">{{ st.release_reason }}</span>
+        {% elif not st.person %}<span class="text-muted small">closed</span>{% endif %}
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endfor %}
+{% else %}
+<div class="alert alert-info">
+  {% if show == 'open' %}No open shifts{% elif show == 'mine' %}You hold no shifts{% else %}No shifts{% endif %}
+  in <strong>{{ schedule.name }}</strong>{% if not include_past %} from today on{% endif %}.
+</div>
+{% endif %}
+{% endif %}
+
+{% if signup_log %}
+<details class="card card-body mt-4">
+  <summary class="fw-semibold">Recent self-signup activity (administrators)</summary>
+  <div class="table-responsive mt-2">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>When (UTC)</th><th>Action</th><th>Person</th><th>Schedule</th><th>Shift</th><th>Account</th></tr></thead>
+      <tbody>
+        {% for e in signup_log %}
+        <tr>
+          <td class="text-nowrap small">{{ e.at[:16].replace('T', ' ') }}</td>
+          <td><span class="badge {{ 'text-bg-success' if e.action == 'signup' else 'text-bg-secondary' }}">{{ e.action }}</span></td>
+          <td>{{ e.person }}</td>
+          <td class="small">{{ e.schedule_name or '(deleted)' }}</td>
+          <td class="small">{{ e.shift_name or e.shift_id }}{% if e.date %} · {{ e.date }} {{ e.start_time }}{% endif %}</td>
+          <td class="small text-muted">{{ e.user_email }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endif %}
+{% endblock %}

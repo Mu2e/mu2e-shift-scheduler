@@ -57,3 +57,16 @@ collaboration:
   fetch_phones: true     # per-record ?detail=full lookups; needs an admin-owned token
   members_only: true     # only active collaboration members are assignable
   timeout: 30            # seconds per HTTP request
+
+# Shift self-signup: shifters claim open shifts from the calendar context menu
+# or the Sign Up page, and release shifts they hold. Admins can close an
+# individual schedule to self-signup on the Schedules page.
+# Precedence: command line (serve --signup-*) > environment (MU2E_SIGNUP_*)
+# > .env > this file > built-in defaults.
+signup:
+  enabled: true                  # MU2E_SIGNUP_ENABLED
+  allow_block_signup: true       # MU2E_SIGNUP_ALLOW_BLOCK: claim every shift of a Shift Setup block at once
+  allow_release_assigned: false  # MU2E_SIGNUP_ALLOW_RELEASE_ASSIGNED: may shifters drop solver/admin assignments?
+  signup_cutoff_hours: 0         # MU2E_SIGNUP_CUTOFF_HOURS: no sign-up this close to the shift start
+  release_cutoff_hours: 24       # MU2E_SIGNUP_RELEASE_CUTOFF_HOURS: no self-release this close to the start
+  require_collab_member: false   # MU2E_SIGNUP_REQUIRE_COLLAB_MEMBER: must match an active directory member

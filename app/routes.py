@@ -1030,15 +1030,17 @@ def calendar_view():
         active_classification["id"] if active_classification else None
     )
 
-    can_assign = (
-        current_user.is_authenticated and current_user.is_admin
-        and selected is not None and not context.get("source") and not context.get("preview")
-    )
+    stored_view = selected is not None and not context.get("source") and not context.get("preview")
+    can_assign = current_user.is_authenticated and current_user.is_admin and stored_view
+    from app import signup
+    can_signup = stored_view and signup.annotate_calendar(entries, selected, current_user)
     default_schedule_id = store.get_default_schedule_id()
     return render_template(
         "calendar.html",
         nav_active="calendar",
         can_assign=can_assign,
+        can_signup=can_signup,
+        page_url=request.full_path.rstrip("?"),
         known_people=store.list_people_names() if can_assign else [],
         tabs=tabs,
         active_tab=active_tab,

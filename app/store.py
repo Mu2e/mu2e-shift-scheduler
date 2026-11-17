@@ -153,6 +153,17 @@ CREATE TABLE IF NOT EXISTS collab_members (
 CREATE INDEX IF NOT EXISTS idx_collab_match ON collab_members(match_key);
 CREATE INDEX IF NOT EXISTS idx_collab_contact_email ON collab_members(contact_email);
 
+CREATE TABLE IF NOT EXISTS signup_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    at          TEXT NOT NULL,
+    action      TEXT NOT NULL,              -- 'signup' | 'release'
+    schedule_id INTEGER REFERENCES schedules(id) ON DELETE SET NULL,
+    shift_id    TEXT NOT NULL,
+    person      TEXT NOT NULL,
+    user_email  TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_signup_log_at ON signup_log(at);
+
 CREATE TABLE IF NOT EXISTS email_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     sent_at     TEXT NOT NULL,
@@ -279,6 +290,15 @@ def init_app_db(app) -> None:
         for column in CONTACT_EXTRA_FIELDS:
             if column not in existing:
                 conn.execute(f"ALTER TABLE contacts ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+        # Migration: shift self-signup. assignments.source records who wrote
+        # the row ('solver' | 'admin' | 'signup'; '' = pre-migration), and
+        # schedules.signup_open lets admins close a schedule to self-signup.
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(assignments)")}
+        if "source" not in existing:
+            conn.execute("ALTER TABLE assignments ADD COLUMN source TEXT NOT NULL DEFAULT ''")
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(schedules)")}
+        if "signup_open" not in existing:
+            conn.execute("ALTER TABLE schedules ADD COLUMN signup_open INTEGER NOT NULL DEFAULT 1")
         now = _utcnow()
         for order, name in enumerate(DEFAULT_CLASSIFICATIONS):
             conn.execute(
@@ -613,7 +633,8 @@ def schedule_to_shift_objects(schedule_id: int, config: dict) -> list:
 # Assignments
 # ---------------------------------------------------------------------------
 
-def save_assignments(schedule_id: int, results: list[dict], saved_by: str) -> None:
+def save_assignments(schedule_id: int, results: list[dict], saved_by: str,
+                     source: str = "solver") -> None:
     # Assignment rows may carry email/phone from the people CSV; record them so
     # calendar contact links keep working after the in-session results expire.
     bulk_upsert_contacts(results)
@@ -622,8 +643,9 @@ def save_assignments(schedule_id: int, results: list[dict], saved_by: str) -> No
         conn.executemany(
             """
             INSERT INTO assignments
-                (schedule_id, shift_id, person, institution, is_preferred, pref_rank, points, saved_by, saved_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (schedule_id, shift_id, person, institution, is_preferred, pref_rank, points,
+                 saved_by, saved_at, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(schedule_id, shift_id) DO UPDATE SET
                 person = excluded.person,
                 institution = excluded.institution,
@@ -631,7 +653,8 @@ def save_assignments(schedule_id: int, results: list[dict], saved_by: str) -> No
                 pref_rank = excluded.pref_rank,
                 points = excluded.points,
                 saved_by = excluded.saved_by,
-                saved_at = excluded.saved_at
+                saved_at = excluded.saved_at,
+                source = excluded.source
             """,
             [
                 (
@@ -644,6 +667,7 @@ def save_assignments(schedule_id: int, results: list[dict], saved_by: str) -> No
                     r.get("points"),
                     saved_by,
                     now,
+                    source,
                 )
                 for r in results
                 if str(r.get("shift_id", "")).strip()
@@ -681,6 +705,7 @@ def assign_person(schedule_id: int, shift_id: str, person: str, saved_by: str) -
             "points": shift["points"],
         }],
         saved_by=saved_by,
+        source="admin",
     )
     return dict(shift)
 
@@ -1175,6 +1200,41 @@ def verify_api_token(token: str) -> dict | None:
 # Who is on duty right now (served by /api/v1/on-duty)
 # ---------------------------------------------------------------------------
 
+def _parse_hhmm(text: str):
+    from datetime import time
+
+    try:
+        hh, mm = str(text).strip().split(":")[:2]
+        return time(int(hh), int(mm))
+    except (TypeError, ValueError):
+        return None
+
+
+def shift_intervals(row: dict) -> list[tuple]:
+    """Naive-local [start, end) datetimes for every day a shift row covers.
+
+    Multi-day blocks expand via expand_shift_days; end_time <= start_time
+    wraps past midnight. Rows with unparseable times yield no intervals.
+    """
+    from datetime import datetime, timedelta
+
+    from scheduler.blocks import expand_shift_days
+
+    start_t = _parse_hhmm(row.get("start_time", ""))
+    end_t = _parse_hhmm(row.get("end_time", ""))
+    if start_t is None or end_t is None:
+        return []
+    out = []
+    for day in expand_shift_days(str(row.get("date", "")), str(row.get("date_end", "") or ""),
+                                 str(row.get("days", "") or "")):
+        starts = datetime.combine(day, start_t)
+        ends = datetime.combine(day, end_t)
+        if ends <= starts:
+            ends += timedelta(days=1)
+        out.append((starts, ends))
+    return out
+
+
 def on_duty(at) -> list[dict]:
     """Every assigned shift, across all stored schedules, whose time window
     covers the naive local datetime ``at``.
@@ -1184,9 +1244,7 @@ def on_duty(at) -> list[dict]:
     20:00-04:00 night shift dated D covers [D 20:00, D+1 04:00). Rows are
     ordered by classification sort order, then schedule name, then start.
     """
-    from datetime import datetime, time, timedelta
-
-    from scheduler.blocks import expand_shift_days
+    from datetime import timedelta
 
     at_date = at.date()
     # A shift can only cover ``at`` if it starts today or yesterday (wrap),
@@ -1211,26 +1269,11 @@ def on_duty(at) -> list[dict]:
             (at_date.isoformat(), earliest, earliest),
         ).fetchall()
 
-    def _parse_time(text: str) -> time | None:
-        try:
-            hh, mm = str(text).strip().split(":")[:2]
-            return time(int(hh), int(mm))
-        except (TypeError, ValueError):
-            return None
-
     contact_cache: dict = {}
     hits = []
     for row in rows:
         row = dict(row)
-        start_t = _parse_time(row["start_time"])
-        end_t = _parse_time(row["end_time"])
-        if start_t is None or end_t is None:
-            continue
-        for day in expand_shift_days(row["date"], row.get("date_end", ""), row.get("days", "")):
-            starts = datetime.combine(day, start_t)
-            ends = datetime.combine(day, end_t)
-            if ends <= starts:
-                ends += timedelta(days=1)
+        for starts, ends in shift_intervals(row):
             if starts <= at < ends:
                 name = row["person"]
                 if name not in contact_cache:
@@ -1262,6 +1305,240 @@ def on_duty(at) -> list[dict]:
     for h in hits:
         h.pop("classification_order", None)
     return hits
+
+
+# ---------------------------------------------------------------------------
+# Shift self-signup (shifters claim open shifts / release their own)
+# ---------------------------------------------------------------------------
+
+_EMPTY_PERSON = "(a.person IS NULL OR a.person = '' OR upper(a.person) = 'UNASSIGNED')"
+
+
+class SignupConflict(ValueError):
+    """A claim or release could not be applied; the message is user-facing."""
+
+
+def set_signup_open(schedule_id: int, is_open: bool) -> None:
+    with connect() as conn:
+        conn.execute("UPDATE schedules SET signup_open = ? WHERE id = ?", (1 if is_open else 0, schedule_id))
+
+
+def signup_shift_rows(schedule_id: int) -> list[dict]:
+    """Every shift of a schedule with its current assignment (person,
+    institution, source; blank when open), ordered by date and start."""
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT ss.*, COALESCE(a.person, '') AS person,
+                   COALESCE(a.institution, '') AS assigned_institution,
+                   COALESCE(a.source, '') AS assignment_source,
+                   COALESCE(a.saved_by, '') AS assignment_saved_by
+              FROM schedule_shifts ss
+              LEFT JOIN assignments a
+                ON a.schedule_id = ss.schedule_id AND a.shift_id = ss.shift_id
+             WHERE ss.schedule_id = ?
+             ORDER BY ss.date, ss.start_time, ss.shift_id
+            """,
+            (schedule_id,),
+        ).fetchall()
+    out = []
+    for row in rows:
+        row = dict(row)
+        if row["person"].strip().upper() == "UNASSIGNED":
+            row["person"] = ""
+        out.append(row)
+    return out
+
+
+def block_key(row: dict) -> tuple | None:
+    """Identity of the Shift Setup block a shift belongs to: shifts generated
+    for the same block occurrence share week, block_number and date range.
+    None when the row carries no block numbering (e.g. a plain shifts CSV)."""
+    if row.get("week") in (None, "") or row.get("block_number") in (None, ""):
+        return None
+    return (int(row["week"]), int(row["block_number"]), row.get("date", ""), row.get("date_end", "") or "")
+
+
+def block_shift_ids(schedule_id: int, shift_id: str) -> list[str]:
+    """shift_ids in the same block as *shift_id* (just itself when unblocked)."""
+    rows = signup_shift_rows(schedule_id)
+    target = next((r for r in rows if r["shift_id"] == shift_id), None)
+    if target is None:
+        return []
+    key = block_key(target)
+    if key is None:
+        return [shift_id]
+    return [r["shift_id"] for r in rows if block_key(r) == key]
+
+
+def _overlaps(a: list[tuple], b: list[tuple]) -> bool:
+    return any(s1 < e2 and s2 < e1 for s1, e1 in a for s2, e2 in b)
+
+
+def claim_shifts(schedule_id: int, shift_ids: list[str], person: str, *, institution: str,
+                 aliases: set[str], saved_by: str, not_before=None) -> list[dict]:
+    """Assign *person* to every shift in *shift_ids*, all or nothing.
+
+    Raises SignupConflict when a shift is unknown, already assigned, starts
+    before *not_before* (naive local datetime), or overlaps a shift that
+    *person* (any of *aliases*, lower-case) already holds in this schedule.
+    The availability check and the writes run inside one BEGIN IMMEDIATE
+    transaction, and each upsert is additionally conditional on the row
+    still being empty, so two concurrent claims cannot both succeed.
+    Returns the claimed shift rows.
+    """
+    person = (person or "").strip()
+    wanted = list(dict.fromkeys(s.strip() for s in shift_ids if s and s.strip()))
+    if not person:
+        raise SignupConflict("Your account has no display name; set one on My Profile first.")
+    if not wanted:
+        raise SignupConflict("No shift was selected.")
+    aliases = {a.lower() for a in aliases | {person} if a}
+    now = _utcnow()
+    with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            rows = [dict(r) for r in conn.execute(
+                f"""
+                SELECT ss.*, COALESCE(a.person, '') AS person, {_EMPTY_PERSON} AS is_open
+                  FROM schedule_shifts ss
+                  LEFT JOIN assignments a
+                    ON a.schedule_id = ss.schedule_id AND a.shift_id = ss.shift_id
+                 WHERE ss.schedule_id = ?
+                """,
+                (schedule_id,),
+            ).fetchall()]
+            by_id = {r["shift_id"]: r for r in rows}
+            missing = [s for s in wanted if s not in by_id]
+            if missing:
+                raise SignupConflict(f"Shift {missing[0]} does not exist in this schedule.")
+            claim = [by_id[s] for s in wanted]
+            taken = [r for r in claim if not r["is_open"]]
+            if taken:
+                labels = ", ".join(f"{r['shift_name'] or r['shift_id']} ({r['date']}: {r['person']})"
+                                   for r in taken)
+                raise SignupConflict(f"Already assigned: {labels}.")
+            intervals = {r["shift_id"]: shift_intervals(r) for r in claim}
+            if not_before is not None:
+                started = [r for r in claim
+                           if not intervals[r["shift_id"]] or intervals[r["shift_id"]][0][0] <= not_before]
+                if started:
+                    raise SignupConflict(
+                        f"{started[0]['shift_name'] or started[0]['shift_id']} ({started[0]['date']}) "
+                        "has already started or is past the sign-up cutoff.")
+            held = [r for r in rows if r["person"].strip().lower() in aliases]
+            for r in claim:
+                for h in held:
+                    if _overlaps(intervals[r["shift_id"]], shift_intervals(h)):
+                        raise SignupConflict(
+                            f"{r['shift_name'] or r['shift_id']} ({r['date']} {r['start_time']}) overlaps "
+                            f"{h['shift_name'] or h['shift_id']} ({h['date']} {h['start_time']}), "
+                            "which you already hold.")
+            for r in claim:
+                cur = conn.execute(
+                    f"""
+                    INSERT INTO assignments
+                        (schedule_id, shift_id, person, institution, is_preferred, pref_rank, points,
+                         saved_by, saved_at, source)
+                    VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, 'signup')
+                    ON CONFLICT(schedule_id, shift_id) DO UPDATE SET
+                        person = excluded.person,
+                        institution = excluded.institution,
+                        is_preferred = NULL,
+                        pref_rank = NULL,
+                        points = excluded.points,
+                        saved_by = excluded.saved_by,
+                        saved_at = excluded.saved_at,
+                        source = excluded.source
+                     WHERE {_EMPTY_PERSON.replace('a.', 'assignments.')}
+                    """,
+                    (schedule_id, r["shift_id"], person, institution, r["points"], saved_by, now),
+                )
+                if cur.rowcount != 1:
+                    raise SignupConflict(f"{r['shift_name'] or r['shift_id']} was just taken by someone else.")
+                conn.execute(
+                    "INSERT INTO signup_log (at, action, schedule_id, shift_id, person, user_email) "
+                    "VALUES (?, 'signup', ?, ?, ?, ?)",
+                    (now, schedule_id, r["shift_id"], person, saved_by),
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+    return claim
+
+
+def release_shift(schedule_id: int, shift_id: str, *, aliases: set[str], saved_by: str,
+                  sources: tuple | None = None, not_before=None) -> dict:
+    """Clear a shift held by one of *aliases* (lower-case names).
+
+    *sources* restricts which assignment sources may be released (e.g.
+    ('signup',) when shifters may only drop their own sign-ups); None allows
+    any. *not_before*: refuse when the shift starts at or before it.
+    Returns the shift row. Raises SignupConflict otherwise.
+    """
+    aliases = {a.lower() for a in aliases if a}
+    now = _utcnow()
+    with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = conn.execute(
+                """
+                SELECT ss.*, COALESCE(a.person, '') AS person, COALESCE(a.source, '') AS source
+                  FROM schedule_shifts ss
+                  LEFT JOIN assignments a
+                    ON a.schedule_id = ss.schedule_id AND a.shift_id = ss.shift_id
+                 WHERE ss.schedule_id = ? AND ss.shift_id = ?
+                """,
+                (schedule_id, shift_id),
+            ).fetchone()
+            if row is None:
+                raise SignupConflict("That shift does not exist in this schedule.")
+            row = dict(row)
+            label = f"{row['shift_name'] or row['shift_id']} ({row['date']})"
+            if row["person"].strip().lower() not in aliases:
+                raise SignupConflict(f"You are not assigned to {label}.")
+            if sources is not None and row["source"] not in sources:
+                raise SignupConflict(
+                    f"{label} was assigned by the scheduler or an administrator; "
+                    "ask a run coordinator to release it.")
+            intervals = shift_intervals(row)
+            if not_before is not None and (not intervals or intervals[0][0] <= not_before):
+                raise SignupConflict(f"{label} has already started or is inside the release cutoff.")
+            conn.execute(
+                """
+                UPDATE assignments
+                   SET person = '', institution = '', is_preferred = NULL, pref_rank = NULL,
+                       saved_by = ?, saved_at = ?, source = ''
+                 WHERE schedule_id = ? AND shift_id = ?
+                """,
+                (saved_by, now, schedule_id, shift_id),
+            )
+            conn.execute(
+                "INSERT INTO signup_log (at, action, schedule_id, shift_id, person, user_email) "
+                "VALUES (?, 'release', ?, ?, ?, ?)",
+                (now, schedule_id, shift_id, row["person"], saved_by),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+    return row
+
+
+def recent_signup_log(limit: int = 50) -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT l.*, s.name AS schedule_name, ss.shift_name, ss.date, ss.start_time
+              FROM signup_log l
+              LEFT JOIN schedules s ON s.id = l.schedule_id
+              LEFT JOIN schedule_shifts ss ON ss.schedule_id = l.schedule_id AND ss.shift_id = l.shift_id
+             ORDER BY l.id DESC LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 # ---------------------------------------------------------------------------
