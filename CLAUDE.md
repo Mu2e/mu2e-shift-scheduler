@@ -85,7 +85,7 @@ venv/bin/python -m pytest tests/     # pytest config in pyproject.toml
 `tests/conftest.py` builds an isolated app (tmp dirs, seeded admin,
 `admin_client`/`user_client` fixtures). Suites: `test_blocks.py`,
 `test_generate.py`, `test_store.py`, `test_loader.py`, `test_solver.py`,
-`test_routes_{files,calendar,schedules}.py`. Keep every new route/module
+`test_routes_{files,calendar,schedules}.py`, `test_signup.py`. Keep every new route/module
 covered; page-render smoke tests catch template `url_for` breakage.
 
 ## Conventions
@@ -117,6 +117,24 @@ covered; page-render smoke tests catch template `url_for` breakage.
   previewed role while `real_role` keeps the stored one. `POST /preview/exit`
   (no admin check) clears it; login/logout signals also clear it. Roles are
   `auth.ROLES`; add new roles there and in `ROLE_LABELS`.
+- Shift self-signup: `app/signup.py` (blueprint `signup`: `/signup`,
+  `POST /signup/claim` with `scope=shift|block`, `POST /signup/release`,
+  admin `POST /signup/schedules/<id>/toggle`; config `signup:` via
+  `resolve_config`, stored in `app.config["SIGNUP"]`). Identity =
+  `current_user.name` (+ aliases: SSO name, matched directory name);
+  contact fields profile > collaboration directory. SQL in `store.py`:
+  `claim_shifts` / `release_shift` run in `BEGIN IMMEDIATE` with a
+  conditional upsert (`DO UPDATE ... WHERE person empty`), raise
+  `SignupConflict`; overlap check uses `store.shift_intervals` (shared with
+  `on_duty`). A "block" is the shifts sharing `(week, block_number, date,
+  date_end)` (`store.block_key`). `assignments.source` = solver|admin|signup;
+  `schedules.signup_open`; audit in `signup_log`. Shift times compare against
+  naive local `API_TIMEZONE` now. Calendar entries get `entry["signup"]` from
+  `signup.annotate_calendar`, rendered as `data-can-*` attributes.
+- Look and feel follows mu2e-collaboration (teal `#0f766e` primary, blue
+  `#2563eb` accent, slate ink/borders): `app/static/css/mu2e-theme.css`
+  overrides Bootstrap 5.3 CSS variables; use `var(--mu2e-*)` tokens, not hex,
+  in templates.
 - Collaboration directory: `app/collab.py` (stdlib HTTP client + sync; config
   via `resolve_config`, stored in `app.config["COLLAB"]`) reads
   mu2e-collaboration.fnal.gov `/api/v1/users/` (GET only, `schema_version` 1,

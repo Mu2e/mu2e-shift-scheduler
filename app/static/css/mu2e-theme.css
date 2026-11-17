@@ -1,0 +1,161 @@
+/*
+ * Mu2e theme for the shift scheduler.
+ *
+ * Matches the mu2e-collaboration site (Tailwind, theme/static_src): teal
+ * primary #0f766e, blue accent #2563eb, slate ink and borders, slate-50 page.
+ * Implemented as Bootstrap 5.3 CSS-variable overrides so the existing
+ * templates keep their markup; load after bootstrap.min.css.
+ */
+:root {
+  --mu2e-primary:       #0f766e;   /* teal-700 */
+  --mu2e-primary-hover: #115e59;   /* teal-800 */
+  --mu2e-primary-soft:  #ccfbf1;   /* teal-100 */
+  --mu2e-accent:        #2563eb;   /* blue-600 */
+  --mu2e-accent-soft:   #dbeafe;   /* blue-100 */
+  --mu2e-ink:           #0f172a;   /* slate-900 */
+  --mu2e-ink-soft:      #475569;   /* slate-600 */
+  --mu2e-muted:         #64748b;   /* slate-500 */
+  --mu2e-paper:         #ffffff;
+  --mu2e-paper-soft:    #f8fafc;   /* slate-50 */
+  --mu2e-border:        #e2e8f0;   /* slate-200 */
+  --mu2e-input-border:  #94a3b8;   /* slate-400 */
+
+  --bs-primary: var(--mu2e-primary);
+  --bs-primary-rgb: 15, 118, 110;
+  --bs-primary-text-emphasis: #134e4a;
+  --bs-primary-bg-subtle: var(--mu2e-primary-soft);
+  --bs-primary-border-subtle: #99f6e4;
+  --bs-body-bg: var(--mu2e-paper-soft);
+  --bs-body-color: var(--mu2e-ink);
+  --bs-secondary-color: var(--mu2e-muted);
+  --bs-border-color: var(--mu2e-border);
+  --bs-link-color: var(--mu2e-primary);
+  --bs-link-color-rgb: 15, 118, 110;
+  --bs-link-hover-color: var(--mu2e-primary-hover);
+  --bs-link-hover-color-rgb: 17, 94, 89;
+  --bs-focus-ring-color: rgba(15, 118, 110, .32);
+  --bs-border-radius: .375rem;     /* rounded-md */
+  --bs-border-radius-lg: .5rem;    /* rounded-lg */
+}
+
+body { background-color: var(--mu2e-paper-soft); color: var(--mu2e-ink); }
+
+/* ---- Navbar: solid teal bar like the collaboration site ---- */
+.navbar.navbar-mu2e {
+  background-color: var(--mu2e-primary);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .15);
+  --bs-navbar-color: rgba(255, 255, 255, .9);
+  --bs-navbar-hover-color: #fff;
+  --bs-navbar-active-color: #fff;
+  --bs-navbar-brand-color: #fff;
+  --bs-navbar-brand-hover-color: #fff;
+  --bs-navbar-toggler-border-color: rgba(255, 255, 255, .3);
+}
+.navbar-mu2e .navbar-brand { font-weight: 600; letter-spacing: -.01em; }
+.navbar-mu2e .navbar-brand span { color: #fff; font-weight: 700; }
+.navbar-mu2e .nav-link { font-size: .92rem; }
+.navbar-mu2e .nav-link:hover { text-decoration: underline; }
+.navbar-mu2e .nav-link.active { font-weight: 600; text-decoration: underline; text-underline-offset: .35em; }
+.navbar-mu2e .btn-nav {
+  background: rgba(255, 255, 255, .1); color: #fff; border: 0;
+  padding: .25rem .75rem; border-radius: .25rem; font-size: .875rem;
+}
+.navbar-mu2e .btn-nav:hover { background: rgba(255, 255, 255, .25); color: #fff; }
+.navbar-mu2e .role-pill {
+  background: rgba(255, 255, 255, .2); color: #fff; font-size: .72rem;
+  padding: .1rem .5rem; border-radius: 999px; font-weight: 500;
+}
+
+/* ---- Buttons ---- */
+.btn { font-weight: 500; }
+.btn-primary {
+  --bs-btn-bg: var(--mu2e-primary);
+  --bs-btn-border-color: var(--mu2e-primary);
+  --bs-btn-hover-bg: var(--mu2e-primary-hover);
+  --bs-btn-hover-border-color: var(--mu2e-primary-hover);
+  --bs-btn-active-bg: var(--mu2e-primary-hover);
+  --bs-btn-active-border-color: var(--mu2e-primary-hover);
+  --bs-btn-disabled-bg: var(--mu2e-primary);
+  --bs-btn-disabled-border-color: var(--mu2e-primary);
+  --bs-btn-focus-shadow-rgb: 15, 118, 110;
+}
+.btn-outline-primary {
+  --bs-btn-color: var(--mu2e-primary);
+  --bs-btn-border-color: var(--mu2e-primary);
+  --bs-btn-hover-bg: var(--mu2e-primary);
+  --bs-btn-hover-border-color: var(--mu2e-primary);
+  --bs-btn-active-bg: var(--mu2e-primary);
+  --bs-btn-active-border-color: var(--mu2e-primary);
+  --bs-btn-disabled-color: var(--mu2e-primary);
+  --bs-btn-disabled-border-color: var(--mu2e-primary);
+  --bs-btn-focus-shadow-rgb: 15, 118, 110;
+}
+.btn-outline-secondary {
+  --bs-btn-color: var(--mu2e-ink-soft);
+  --bs-btn-border-color: #cbd5e1;
+  --bs-btn-hover-bg: #f1f5f9;
+  --bs-btn-hover-color: var(--mu2e-ink);
+  --bs-btn-hover-border-color: #cbd5e1;
+  --bs-btn-active-bg: #e2e8f0;
+  --bs-btn-active-color: var(--mu2e-ink);
+}
+.btn-accent {
+  --bs-btn-color: #fff;
+  --bs-btn-bg: var(--mu2e-accent);
+  --bs-btn-border-color: var(--mu2e-accent);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: #1d4ed8;
+  --bs-btn-hover-border-color: #1d4ed8;
+}
+
+/* ---- Cards, tables, tabs, lists ---- */
+.card {
+  border: 1px solid var(--mu2e-border);
+  border-radius: .5rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .05);
+}
+.card-header { background: var(--mu2e-paper-soft); border-bottom-color: var(--mu2e-border); font-weight: 600; }
+.table { --bs-table-border-color: var(--mu2e-border); }
+.table > thead th,
+.table th {
+  background-color: var(--mu2e-paper-soft);
+  color: var(--mu2e-muted);
+  font-size: .75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.table > tbody th { text-transform: none; letter-spacing: normal; font-size: inherit; color: var(--mu2e-ink); }
+.nav-tabs { --bs-nav-tabs-link-active-color: var(--mu2e-primary); --bs-nav-tabs-border-color: var(--mu2e-border); }
+.nav-tabs .nav-link { color: var(--mu2e-ink-soft); }
+.nav-tabs .nav-link.active { font-weight: 600; border-top: 2px solid var(--mu2e-primary); }
+.nav-pills { --bs-nav-pills-link-active-bg: var(--mu2e-primary); }
+.list-group { --bs-list-group-active-bg: var(--mu2e-primary); --bs-list-group-active-border-color: var(--mu2e-primary); }
+.dropdown-menu { --bs-dropdown-link-active-bg: var(--mu2e-primary); border-color: var(--mu2e-border); }
+.pagination { --bs-pagination-color: var(--mu2e-primary); --bs-pagination-active-bg: var(--mu2e-primary); --bs-pagination-active-border-color: var(--mu2e-primary); }
+
+/* ---- Forms: same input treatment as the collaboration site ---- */
+.form-control, .form-select { border-color: var(--mu2e-input-border); }
+.form-control:focus, .form-select:focus {
+  border-color: var(--mu2e-primary);
+  box-shadow: 0 0 0 .2rem rgba(15, 118, 110, .25);
+}
+.form-check-input:checked { background-color: var(--mu2e-primary); border-color: var(--mu2e-primary); }
+.form-check-input:focus { border-color: var(--mu2e-primary); box-shadow: 0 0 0 .2rem rgba(15, 118, 110, .25); }
+
+/* ---- Alerts: Tailwind-style 50/800/200 palettes ---- */
+.alert { border-radius: .375rem; font-size: .92rem; }
+.alert-success { --bs-alert-bg: #f0fdf4; --bs-alert-color: #166534; --bs-alert-border-color: #bbf7d0; }
+.alert-danger  { --bs-alert-bg: #fef2f2; --bs-alert-color: #991b1b; --bs-alert-border-color: #fecaca; }
+.alert-warning { --bs-alert-bg: #fefce8; --bs-alert-color: #854d0e; --bs-alert-border-color: #fef08a; }
+.alert-info    { --bs-alert-bg: #eff6ff; --bs-alert-color: #1e40af; --bs-alert-border-color: #bfdbfe; }
+
+/* ---- Badges used by the scheduler ---- */
+.badge-preferred { background-color: var(--mu2e-primary); }
+.badge-not-preferred { background-color: var(--mu2e-muted); }
+.badge-mine { background-color: var(--mu2e-accent); }
+
+/* ---- Footer ---- */
+footer.site-footer { font-size: .78rem; color: #94a3b8; border-top: 1px solid var(--mu2e-border); }
+footer.site-footer a { color: #94a3b8; }
+footer.site-footer a:hover { color: var(--mu2e-ink-soft); }

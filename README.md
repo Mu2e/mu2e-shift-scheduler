@@ -272,6 +272,49 @@ The old `_shifts_per_person` key names are still accepted as fallbacks.
     shifts were not filled by a preferred person in pass 1).
 - Download results as CSV or JSON.
 
+### Shift self-signup (`/signup` and the calendar menu)
+
+Any logged-in shifter can sign up for an **open** shift, or for every shift
+of a Shift Setup block at once, and remove themselves from shifts they
+signed up for:
+
+- **Calendar:** right-click a shift for *Sign me up for this shift*, *Sign me
+  up for the whole block (N shifts)* or *Remove me from this shift*.
+  Administrators see these items above their Assign / Remind / Clear items.
+- **Sign-Up page (`/signup`):** pick a schedule; open shifts are grouped by
+  block with per-shift and whole-block buttons, and *My upcoming shifts*
+  lists the user's shifts with *Remove me*.
+
+The person written to the schedule is the account's display name (SSO name,
+or the name chosen on My Profile). Institution, email and phone come from the
+profile, with blanks filled from the Mu2e Collaboration directory (matched by
+email, then FNAL username). The directory name also counts as "you" when
+deciding which existing assignments belong to the user.
+
+Guards (all enforced server-side, inside one `BEGIN IMMEDIATE` transaction):
+the shift must be empty (`""`/`UNASSIGNED`); it must not have started or be
+inside `signup_cutoff_hours`; it must not overlap a shift the user already
+holds in that schedule; a block claim is all or nothing. Releases are limited
+to the user's own self-signups unless `allow_release_assigned` is set, and
+are refused inside `release_cutoff_hours`. Every claim and release is written
+to `signup_log` (shown to admins on the Sign-Up page), and
+`assignments.source` records `solver`, `admin` or `signup` for each row.
+Admins can close an individual schedule to self-signup on the Schedules page.
+
+```yaml
+signup:                          # config/config.yaml
+  enabled: true                  # MU2E_SIGNUP_ENABLED / serve --[no-]signup
+  allow_block_signup: true       # MU2E_SIGNUP_ALLOW_BLOCK
+  allow_release_assigned: false  # MU2E_SIGNUP_ALLOW_RELEASE_ASSIGNED
+  signup_cutoff_hours: 0         # MU2E_SIGNUP_CUTOFF_HOURS
+  release_cutoff_hours: 24       # MU2E_SIGNUP_RELEASE_CUTOFF_HOURS
+  require_collab_member: false   # MU2E_SIGNUP_REQUIRE_COLLAB_MEMBER
+```
+
+```bash
+venv/bin/mu2e-shift-scheduler serve --port 8001 --signup-release-cutoff-hours 48
+```
+
 ### Collaboration directory (`/admin/collaboration`)
 
 The member directory is synced read-only from the Mu2e Collaboration database

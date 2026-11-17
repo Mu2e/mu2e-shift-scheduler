@@ -34,15 +34,29 @@
 {%- endif -%}
 {% endmacro %}
 
+{% macro signup_attrs(entry) -%}
+{%- set su = entry.get('signup') or {} -%}
+{%- if su %} data-can-claim="{{ 1 if su.can_claim else 0 }}"
+     data-can-claim-block="{{ 1 if su.can_claim_block else 0 }}"
+     data-block-size="{{ su.block_size }}"
+     data-can-release="{{ 1 if su.can_release else 0 }}"
+     data-mine="{{ 1 if su.mine else 0 }}"
+     data-release-reason="{{ su.release_reason }}"{% endif -%}
+{%- endmacro %}
+
 {% macro calendar_entry(entry) %}
-<div class="assignment-card {{ 'empty-shift' if not entry.person }} {{ 'span-cont' if entry.span.is_multi and entry.span.day_index > 1 }}"
+{%- set su = entry.get('signup') or {} -%}
+<div class="assignment-card {{ 'empty-shift' if not entry.person }} {{ 'span-cont' if entry.span.is_multi and entry.span.day_index > 1 }} {{ 'mine' if su.mine }} {{ 'can-claim' if su.can_claim }}"
      data-shift-id="{{ entry.shift_id }}"
      data-shift-label="{{ entry.shift_name }}"
-     data-person="{{ entry.person.name if entry.person else '' }}">
+     data-shift-when="{{ entry.start_time }}–{{ entry.end_time }}"
+     data-person="{{ entry.person.name if entry.person else '' }}"
+     {{ signup_attrs(entry) }}>
   <div class="assignment-time">{{ entry.start_time }}&ndash;{{ entry.end_time }}</div>
   <div class="fw-semibold">
     {{ entry.shift_name }}:
     {% if entry.person %}{{ contact_link(entry.person) }}{% else %}<span class="text-muted">Empty</span>{% endif %}
+    {% if su.mine %}<span class="badge badge-mine ms-1">you</span>{% endif %}
   </div>
   {% if entry.span.is_multi %}
   <div class="text-muted small">day {{ entry.span.day_index }} of {{ entry.span.total_days }}</div>
